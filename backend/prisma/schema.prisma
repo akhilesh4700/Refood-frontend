@@ -1,0 +1,188 @@
+// Prisma Schema for ReFood Backend
+// Food surplus redistribution and organic waste recovery platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPPLIER
+  RECIPIENT
+  PROCESSOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING_VERIFICATION
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ListingType {
+  EDIBLE
+  ORGANIC
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  CLAIMED
+  COMPLETED
+  EXPIRED
+  WITHDRAWN
+  CONVERTED
+}
+
+enum StorageMethod {
+  AMBIENT
+  REFRIGERATED
+  FROZEN
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  IN_TRANSIT
+  ARRIVED
+  HANDOVER_PENDING
+  COMPLETED
+  CANCELLED
+  CONFLICT
+}
+
+enum PaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model Organization {
+  id                 String             @id @default(uuid())
+  name               String
+  type               String             // e.g., "Commercial Kitchen", "NGO / Shelter", "Food Bank", "Organic Composter"
+  address            String
+  city               String
+  state              String             @default("Karnataka")
+  postalCode         String?
+  phone              String
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  users              User[]
+  listings           Listing[]          @relation("SupplierListings")
+  reservations       Reservation[]      @relation("RecipientReservations")
+
+  @@index([verificationStatus])
+  @@index([city])
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           UserRole     @default(SUPPLIER)
+  status         UserStatus   @default(ACTIVE)
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdListings Listing[]   @relation("ListingCreator")
+  claimedReservations Reservation[] @relation("ClaimedByUser")
+
+  @@index([organizationId])
+  @@index([role])
+}
+
+model Listing {
+  id                   String        @id @default(uuid())
+  supplierOrgId        String
+  createdById          String?
+  title                String
+  description          String
+  type                 ListingType   @default(EDIBLE)
+  status               ListingStatus @default(ACTIVE)
+  category             String
+  subcategory          String?
+  weightKg             Decimal       @db.Decimal(10, 2)
+  portions             Int?
+  storageMethod        StorageMethod @default(AMBIENT)
+  handlingInstructions String?
+  allergens            String[]      @default([])
+  preparedAt           DateTime?
+  safeUntil            DateTime?     // Null for organic waste; mandatory verification for edible
+  earliestPickup       DateTime
+  collectionDeadline   DateTime
+  pickupAddress        String
+  pickupInstructions   String?
+  onSiteContact        String
+  onSitePhone          String
+  imageUrl             String?
+  isFree               Boolean       @default(true)
+  price                Decimal?      @db.Decimal(10, 2)
+  currency             String?       @default("INR")
+  withdrawalReason     String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  supplierOrg          Organization  @relation("SupplierListings", fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  createdBy            User?         @relation("ListingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  reservations         Reservation[]
+
+  @@index([supplierOrgId])
+  @@index([status, type])
+  @@index([collectionDeadline])
+  @@index([safeUntil])
+}
+
+model Reservation {
+  id                 String            @id @default(uuid())
+  listingId          String
+  recipientOrgId     String
+  claimedById        String
+  status             ReservationStatus @default(PENDING)
+  paymentStatus      PaymentStatus     @default(NOT_REQUIRED)
+  quantityClaimedKg  Decimal           @db.Decimal(10, 2)
+  priceAgreed        Decimal?          @db.Decimal(10, 2)
+  pickupAddress      String
+  earliestPickup     DateTime
+  collectionDeadline DateTime
+  onSiteContact      String?
+  onSitePhone        String?
+  otpHash            String?
+  otpExpiresAt       DateTime?
+  otpAttempts        Int               @default(0)
+  handoverVerifiedAt DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  listing            Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  recipientOrg       Organization      @relation("RecipientReservations", fields: [recipientOrgId], references: [id], onDelete: Cascade)
+  claimedBy          User              @relation("ClaimedByUser", fields: [claimedById], references: [id], onDelete: Cascade)
+
+  // Enforce single-claim at database level: a listing can only have ONE non-cancelled active reservation
+  @@index([listingId])
+  @@index([recipientOrgId])
+  @@index([status])
+}
