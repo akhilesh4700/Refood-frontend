@@ -8,6 +8,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import { listingsRouter } from './modules/listings/listings.routes';
 import { reservationsRouter } from './modules/reservations/reservations.routes';
 import { supplierRouter } from './modules/supplier/supplier.routes';
+import { recipientRouter } from './modules/recipient/recipient.routes';
 import { sendError } from './utils/apiResponse';
 
 export function createApp(): Express {
@@ -17,7 +18,13 @@ export function createApp(): Express {
   app.use(helmet());
   app.use(
     cors({
-      origin: [env.FRONTEND_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: [
+        env.FRONTEND_ORIGIN,
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5174',
+      ],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
@@ -42,6 +49,9 @@ export function createApp(): Express {
 
   app.use('/api/supplier', supplierRouter);
   app.use('/supplier', supplierRouter);
+
+  app.use('/api/recipient', recipientRouter);
+  app.use('/recipient', recipientRouter);
 
   // 4. 404 Not Found Catch-All
   app.use((req: Request, res: Response) => {

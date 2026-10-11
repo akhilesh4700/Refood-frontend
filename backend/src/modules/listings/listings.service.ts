@@ -302,7 +302,8 @@ export async function withdrawListing(
 export async function claimListing(
   listingId: string,
   recipientOrgId: string,
-  claimedById: string
+  claimedById: string,
+  userRole?: string
 ) {
   const now = new Date();
 
@@ -315,6 +316,15 @@ export async function claimListing(
 
     if (!listing) {
       throw new AppError('Listing not found', 404, 'NOT_FOUND');
+    }
+
+    // Role safety check: processors cannot claim edible food for human consumption
+    if (userRole === 'PROCESSOR' && listing.type === 'EDIBLE') {
+      throw new AppError(
+        'Processors are restricted to claiming organic biomass listings, not edible human food',
+        403,
+        'ROLE_RESTRICTION'
+      );
     }
 
     // 2. Prevent supplier from claiming their own surplus batch

@@ -23,3 +23,13 @@ supplierRouter.get(
   authorizeRole('SUPPLIER'),
   asyncHandler(getSupplierPickups)
 );
+
+supplierRouter.get(
+  '/analytics',
+  asyncHandler(authenticate),
+  authorizeRole('SUPPLIER'),
+  asyncHandler(async (req, res) => {
+    const { getSupplierAnalytics } = await import('../analytics/analytics.controller');
+    await getSupplierAnalytics(req, res);
+  })
+);

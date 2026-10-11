@@ -32,3 +32,33 @@ export async function updateReservationStatus(req: Request, res: Response): Prom
   );
   sendSuccess(res, item, 200, 'Reservation status updated');
 }
+
+export async function initiateHandoverOtp(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+  const result = await reservationsService.initiateHandoverOtp(
+    req.params.id,
+    req.user.organizationId
+  );
+  sendSuccess(res, result, 200, 'Handover OTP initiated');
+}
+
+export async function getReservationOtp(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+  const result = await reservationsService.getReservationOtp(
+    req.params.id,
+    req.user.organizationId
+  );
+  sendSuccess(res, result, 200);
+}
+
+export async function verifyHandoverOtp(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+  const { otp } = req.body;
+  if (!otp) throw new AppError('Field \'otp\' is required', 400, 'VALIDATION_ERROR');
+  const result = await reservationsService.verifyHandoverOtp(
+    req.params.id,
+    req.user.organizationId,
+    otp
+  );
+  sendSuccess(res, result, 200, 'Handover verified and completed successfully');
+}

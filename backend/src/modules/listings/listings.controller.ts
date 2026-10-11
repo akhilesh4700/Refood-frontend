@@ -67,7 +67,8 @@ export async function claimListing(req: Request, res: Response): Promise<void> {
   const reservation = await listingsService.claimListing(
     req.params.id,
     req.user.organizationId,
-    req.user.id
+    req.user.id,
+    req.user.role
   );
   sendSuccess(res, reservation, 201, 'Listing claimed successfully');
 }
