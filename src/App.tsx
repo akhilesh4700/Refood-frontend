@@ -6,6 +6,9 @@ import { BareLayout, AuthLayout, SupplierGuard, RecipientGuard } from './layouts
 import { Landing }     from './pages/Landing';
 import { Login }       from './pages/Login';
 
+// Supplier pages
+import { MyListings }  from './pages/supplier/MyListings';
+
 // Shared pages used by both flows (role-aware at render time)
 import { Dashboard }   from './pages/Dashboard';
 import { Browse }      from './pages/Browse';
@@ -31,7 +34,7 @@ export function App() {
 
           {/* Role-specific login pages — no shared form, no role selector */}
           <Route path="/supplier/login"  element={<Login role="supplier" />} />
-          <Route path="/recipient/login" element={<Login role="buyer" />} />
+          <Route path="/recipient/login" element={<Login role="recipient" />} />
 
           {/* Legacy /login?role= redirect (from old landing page links) */}
           <Route path="/login" element={<LoginRedirect />} />
@@ -44,7 +47,7 @@ export function App() {
         <Route element={<AuthLayout />}>
           <Route element={<SupplierGuard />}>
             <Route path="/supplier/dashboard"     element={<Dashboard />} />
-            <Route path="/supplier/listings"      element={<Browse />} />
+            <Route path="/supplier/listings"      element={<MyListings />} />
             <Route path="/supplier/listings/new"  element={<CreateListing />} />
             <Route path="/supplier/listings/:id"  element={<ListingDetail />} />
             <Route path="/supplier/pickups"       element={<Reservation />} />
@@ -76,7 +79,7 @@ export function App() {
         <Route path="/dashboard"          element={<Navigate to="/supplier/dashboard" replace />} />
         <Route path="/listings"           element={<Navigate to="/supplier/listings" replace />} />
         <Route path="/listings/new"       element={<Navigate to="/supplier/listings/new" replace />} />
-        <Route path="/listings/:id"       element={<Navigate to="/supplier/listings/RF-84920" replace />} />
+        <Route path="/listings/:id"       element={<Navigate to="/supplier/listings" replace />} />
         <Route path="/reservations/:id"   element={<Navigate to="/supplier/pickups" replace />} />
         <Route path="/analytics"          element={<Navigate to="/supplier/analytics" replace />} />
         <Route path="/notifications"      element={<Navigate to="/supplier/notifications" replace />} />
@@ -95,7 +98,7 @@ export function App() {
 function LoginRedirect() {
   const params = new URLSearchParams(window.location.search);
   const role = params.get('role');
-  const target = role === 'buyer' ? '/recipient/login' : '/supplier/login';
+  const target = role === 'buyer' || role === 'recipient' ? '/recipient/login' : '/supplier/login';
   return <Navigate to={target} replace />;
 }
 

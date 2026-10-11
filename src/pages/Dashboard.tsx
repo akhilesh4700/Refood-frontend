@@ -1,95 +1,122 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
-  Filter,
   Package,
   Truck,
   BarChart3,
   Award,
-  Leaf,
   ChevronRight,
-  MessageSquare,
-  Zap,
-  FileText,
-  Eye,
   Clock,
   MapPin,
-  Thermometer,
   Building2,
   HeartHandshake,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
+  Inbox,
+  Calendar,
 } from 'lucide-react';
 import { StatCard } from '../components/StatCard';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { ProgressBar } from '../components/ui/ProgressBar';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { cn } from '../components/ui/utils';
 import {
+  getStoredUser,
+  getMyListings,
   getListings,
-  getTodayPickups,
-  getActiveUser,
-  subscribeToDataChanges,
-  type ActiveUser
+  getSupplierPickups,
+  getMyReservations,
+  isApiConfigured,
 } from '../api';
 import { timeLeft, formatKg } from '../lib/formatters';
 import { useRolePaths } from '../lib/useRolePaths';
-import type { Listing, Pickup } from '../mocks/data';
+import type { Listing, Reservation, User } from '../types/domain';
 
-type FilterVal = 'all' | 'human' | 'organic';
+type FilterVal = 'all' | 'edible' | 'organic';
 
 export function Dashboard() {
+  const paths = useRolePaths();
+  const currentUser: User | null = getStoredUser();
+  const isSupplier = currentUser?.role !== 'recipient';
+
   const [listings, setListings] = useState<Listing[]>([]);
-  const [pickups, setPickups] = useState<Pickup[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filter, setFilter] = useState<FilterVal>('all');
   const [loading, setLoading] = useState(true);
-  const [otpTimer, setOtpTimer] = useState(6150);
-  const [currentUser, setCurrentUser] = useState<ActiveUser>(getActiveUser());
-  const [authorizedOtp, setAuthorizedOtp] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    const [l, p] = await Promise.all([getListings(), getTodayPickups()]);
-    setListings(l);
-    setPickups(p);
-    setCurrentUser(getActiveUser());
-    setLoading(false);
-  };
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (isSupplier) {
+        const [lRes, pRes] = await Promise.allSettled([
+          getMyListings(),
+          getSupplierPickups(),
+        ]);
+        if (lRes.status === 'fulfilled') {
+          const items = Array.isArray(lRes.value) ? lRes.value : lRes.value?.items ?? [];
+          setListings(items);
+        } else {
+          setListings([]);
+        }
+        if (pRes.status === 'fulfilled') {
+          setReservations(pRes.value || []);
+        } else {
+          setReservations([]);
+        }
+      } else {
+        const [lRes, rRes] = await Promise.allSettled([
+          getListings({ status: 'active' }),
+          getMyReservations(),
+        ]);
+        if (lRes.status === 'fulfilled') {
+          const items = Array.isArray(lRes.value) ? lRes.value : lRes.value?.items ?? [];
+          setListings(items);
+        } else {
+          setListings([]);
+        }
+        if (rRes.status === 'fulfilled') {
+          setReservations(rRes.value || []);
+        } else {
+          setReservations([]);
+        }
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to synchronize dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  }, [isSupplier]);
 
   useEffect(() => {
     loadData();
-    const unsub = subscribeToDataChanges(() => {
-      loadData();
+  }, [loadData]);
+
+  const filtered = useMemo(() => {
+    return listings.filter((l) => {
+      if (filter === 'edible') return l.type === 'edible';
+      if (filter === 'organic') return l.type === 'organic';
+      return true;
     });
-    return unsub;
-  }, []);
+  }, [listings, filter]);
 
-  useEffect(() => {
-    const t = setInterval(() => setOtpTimer((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const edibleCount = listings.filter((l) => l.type === 'edible').length;
+  const organicCount = listings.filter((l) => l.type === 'organic').length;
 
-  const filtered = listings.filter((l) => {
-    if (filter === 'human') return l.stream === 'edible' || l.stream === 'urgent';
-    if (filter === 'organic') return l.stream === 'organic';
-    return true;
-  });
+  // Real aggregate weight from actual items loaded
+  const confirmedWeight = listings.reduce((sum, l) => sum + (l.weightKg || 0), 0);
+  const estimatedCo2Avoided = ((confirmedWeight * 2.5) / 1000).toFixed(2);
 
-  const edibleCount = listings.filter((l) => l.stream === 'edible' || l.stream === 'urgent').length;
-  const organicCount = listings.filter((l) => l.stream === 'organic').length;
-  const totalWeight = listings.reduce((sum, l) => sum + (l.weightKg || 0), 0) + 3420;
-  const totalGhg = ((totalWeight * 2.5) / 1000).toFixed(1);
-
-  const isSupplier = currentUser.role === 'supplier';
-  const nextPickup = pickups[0];
-  const paths = useRolePaths();
-
-  if (loading) return <Skeleton />;
+  const nextPickup = reservations[0];
 
   return (
     <div className="max-w-[1240px] mx-auto px-6 py-8 space-y-8">
-      {/* Hero banner */}
+      {/* Hero banner with actual user identity */}
       <div
         className={cn(
           'relative rounded-[20px] overflow-hidden p-8 text-white transition-all shadow-md',
@@ -105,23 +132,26 @@ export function Dashboard() {
         <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex-1">
             <div className="flex flex-wrap gap-2 mb-3">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#7EE8C8]/20 text-[#7EE8C8] text-xs font-bold border border-[#7EE8C8]/30">
-                {isSupplier ? 'Audited Food Safety Partner' : 'Certified Food Recovery NGO'}
+              <span className="px-2.5 py-0.5 rounded-full bg-[#7EE8C8]/20 text-[#7EE8C8] text-xs font-bold border border-[#7EE8C8]/30 flex items-center gap-1.5">
+                <ShieldCheck size={13} />
+                {isSupplier ? 'Audited Food Donor' : 'Registered Recovery Recipient'}
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-xs font-medium">
-                {isSupplier ? 'HACCP ID: FSSAI-KA-2022-048291' : 'DARPAN ID: KA/2021/02849'}
+                {currentUser?.orgType || (isSupplier ? 'Commercial Kitchen / Catering' : 'NGO / Shelter')}
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-xs font-medium">
-                DAILY LOG SYNC ACTIVE
-              </span>
+              {currentUser?.verified && (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-200 text-xs font-medium flex items-center gap-1">
+                  <CheckCircle2 size={12} /> Verified Member
+                </span>
+              )}
             </div>
             <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">
-              {isSupplier ? 'Hotel Grand Royale · Culinary' : 'Robin Hood Army · Bengaluru Hub'}
+              {currentUser?.orgName || (isSupplier ? 'Supplier Operations Portal' : 'Recipient Logistics Hub')}
             </h1>
             <p className="mt-1.5 text-xs text-white/80 max-w-xl">
               {isSupplier
-                ? 'Central Kitchen & Banqueting Hub · Koramangala, Bengaluru · Good Samaritan & FSSAI Compliant'
-                : 'Decentralized Night Shelter & Micro-Pantry Network · Operating 18 Cold-Chain Dispatch Points'}
+                ? 'Manage active surplus food streams, track cold-chain compliance, and coordinate verified handovers.'
+                : 'Browse available food donations, reserve batches for community distribution, and verify pickups.'}
             </p>
           </div>
 
@@ -135,7 +165,7 @@ export function Dashboard() {
                 </Link>
                 <Link to={paths.listings}>
                   <Button variant="ghost" className="text-white border border-white/20 hover:bg-white/10 text-xs px-4 py-2.5">
-                    Browse All Listings
+                    View My Inventory
                   </Button>
                 </Link>
               </>
@@ -148,261 +178,255 @@ export function Dashboard() {
                 </Link>
                 <Link to={paths.reservations}>
                   <Button variant="ghost" className="text-white border border-white/20 hover:bg-white/10 text-xs px-4 py-2.5">
-                    View Active Order
+                    My Reservations
                   </Button>
                 </Link>
               </>
             )}
+            <button
+              onClick={loadData}
+              disabled={loading}
+              className="p-2.5 rounded-xl border border-white/20 hover:bg-white/10 text-white transition-colors"
+              title="Refresh Dashboard"
+            >
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 4 StatCards */}
+      {/* Backend connection banner if not set */}
+      {!isApiConfigured() && (
+        <div className="flex items-center justify-between p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle size={16} className="text-amber-600 shrink-0" />
+            <span>
+              <strong>Backend Integration Notice:</strong> Live data will sync automatically once <code>VITE_API_BASE_URL</code> is connected.
+            </span>
+          </div>
+          <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded font-mono">
+            API PENDING
+          </span>
+        </div>
+      )}
+
+      {/* 4 StatCards with authentic metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label={isSupplier ? 'Live Inventory' : 'Available in Sector'}
+          label={isSupplier ? 'Active Inventory' : 'Available in Sector'}
           value={listings.length}
           unit="Batches"
-          sub="Updated in real time"
+          sub="Live registered batches"
           chips={[
-            { label: `${edibleCount} Edible Human`, variant: 'edible' },
-            { label: `${organicCount} Bio-Conversion`, variant: 'organic' },
+            { label: `${edibleCount} Edible`, variant: 'edible' },
+            { label: `${organicCount} Biomass`, variant: 'organic' },
           ]}
           icon={<Package size={18} className="text-[#0E6B45]" />}
         />
 
         <StatCard
-          label="Today's Pickups"
-          value={pickups.length}
-          unit="Scheduled"
-          sub={nextPickup ? `Next: ${nextPickup.recipient.split(' ')[0]} (45m)` : 'All dispatches completed'}
-          chips={[{ label: '1 In-Transit', variant: 'info' }]}
+          label={isSupplier ? "Today's Pickups" : 'Active Claims'}
+          value={reservations.length}
+          unit="Handovers"
+          sub={nextPickup ? `Next: #${nextPickup.id.slice(0, 8)}` : 'No pending pickups'}
+          chips={[{ label: `${reservations.length} Scheduled`, variant: 'info' }]}
           icon={<Truck size={18} className="text-[#B8650A]" />}
         />
 
         <StatCard
-          label="Diversion Impact"
-          value={totalWeight.toLocaleString('en-IN')}
+          label="Tracked Weight"
+          value={confirmedWeight.toLocaleString('en-IN')}
           unit="kg"
-          sub="148 Total Transfers · +18% MoM"
+          sub={confirmedWeight > 0 ? 'From active inventory' : 'No recorded weight yet'}
           icon={<BarChart3 size={18} className="text-[#0E6B45]" />}
         />
 
         <StatCard
-          label="Avoided GHG"
-          value={totalGhg}
+          label="Est. GHG Reduction"
+          value={estimatedCo2Avoided}
           unit="MT CO2e"
-          sub="Gold Tier Steward · Score 98.4%"
-          chips={[{ label: 'Gold Tier', variant: 'mint' }]}
+          sub="Calculated at 2.5 kg CO2e/kg"
+          chips={[{ label: 'Scope 3', variant: 'mint' }]}
           icon={<Award size={18} className="text-[#0E6B45]" />}
         />
       </div>
 
       {/* 2-Column Content Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column (8 cols): Inventory panel */}
+        {/* Left Column (8 cols): Inventory / Surplus list */}
         <div className="lg:col-span-8 bg-white rounded-2xl border border-[#E6E8F0] shadow-xs overflow-hidden">
           <div className="p-6 border-b border-[#E6E8F0] flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold text-[#111827]">
-                {isSupplier ? 'Active Surplus Inventory' : 'Available Food Surplus Batches'}
+                {isSupplier ? 'Your Listed Surplus Batches' : 'Available Food Surplus Batches'}
               </h2>
               <p className="text-xs text-[#5B6272] mt-0.5">
                 {isSupplier
                   ? 'Real-time telemetry and safe dispatch windows for your recorded batches'
-                  : 'Live batches ready for immediate NGO collection and distribution'}
+                  : 'Live batches ready for immediate collection and redistribution'}
               </p>
             </div>
             <SegmentedControl
               options={[
                 { value: 'all', label: `All (${listings.length})` },
-                { value: 'human', label: `Human Only (${edibleCount})` },
-                { value: 'organic', label: `Organic (${organicCount})` },
+                { value: 'edible', label: `Edible (${edibleCount})` },
+                { value: 'organic', label: `Biomass (${organicCount})` },
               ]}
               value={filter}
               onChange={(v) => setFilter(v as FilterVal)}
             />
           </div>
 
-          <div className="divide-y divide-[#E6E8F0]">
-            {filtered.map((l) => {
-              const tl = timeLeft(l.expiresAt);
-              return (
-                <div key={l.id} className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 hover:bg-[#FAFAFC] transition-colors">
-                  <img
-                    src={l.imageUrl}
-                    alt={l.title}
-                    className="w-20 h-20 rounded-xl object-cover shrink-0 border border-[#E6E8F0]"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Badge variant={l.stream === 'organic' ? 'organic' : 'edible'}>
-                        {l.stream === 'organic' ? 'Organic Biomass' : 'Edible Surplus'}
-                      </Badge>
-                      <span className="text-[10px] font-semibold bg-[#EEF0FA] text-[#5B6272] px-2 py-0.5 rounded-md">
-                        {l.temperature}
-                      </span>
-                      <span className="text-[10px] text-[#5B6272]">Batch #{l.id}</span>
+          {loading ? (
+            <div className="py-16 flex flex-col items-center justify-center text-slate-400">
+              <Loader2 size={24} className="animate-spin text-[#0E6B45] mb-2" />
+              <p className="text-xs">Loading surplus inventory...</p>
+            </div>
+          ) : filtered.length > 0 ? (
+            <div className="divide-y divide-[#E6E8F0]">
+              {filtered.map((l) => {
+                const deadlineStr = l.safeUntil || l.collectionDeadline;
+                const tl = deadlineStr ? timeLeft(new Date(deadlineStr)) : { label: 'Active', urgent: false };
+                return (
+                  <div key={l.id} className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 hover:bg-[#FAFAFC] transition-colors">
+                    {l.imageUrl ? (
+                      <img
+                        src={l.imageUrl}
+                        alt={l.title}
+                        className="w-20 h-20 rounded-xl object-cover shrink-0 border border-[#E6E8F0]"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 border border-[#E6E8F0] text-slate-400">
+                        <Package size={24} />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <Badge variant={l.type === 'organic' ? 'organic' : 'edible'}>
+                          {l.type === 'organic' ? 'Organic Biomass' : 'Edible Surplus'}
+                        </Badge>
+                        <span className="text-[10px] font-semibold bg-[#EEF0FA] text-[#5B6272] px-2 py-0.5 rounded-md capitalize">
+                          {l.storageMethod}
+                        </span>
+                        <span className="text-[10px] text-[#5B6272]">Batch #{l.id.slice(0, 8)}</span>
+                      </div>
+
+                      <h3 className="font-bold text-sm text-[#111827] truncate">{l.title}</h3>
+                      <p className="text-xs text-[#5B6272] mt-0.5 line-clamp-1">{l.description}</p>
+
+                      <div className="flex items-center gap-4 mt-2 text-xs text-[#5B6272]">
+                        <span className="flex items-center gap-1">
+                          <MapPin size={11} className="text-[#0E6B45]" />
+                          {l.supplierLocation || l.pickupAddress || 'Address on file'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock size={11} className="text-[#B8650A]" />
+                          Window: {tl.label}
+                        </span>
+                      </div>
                     </div>
 
-                    <h3 className="font-bold text-sm text-[#111827] truncate">{l.title}</h3>
-                    <p className="text-xs text-[#5B6272] mt-0.5 line-clamp-1">{l.description}</p>
-
-                    <div className="flex items-center gap-4 mt-2 text-xs text-[#5B6272]">
-                      <span className="flex items-center gap-1">
-                        <MapPin size={11} className="text-[#0E6B45]" />
-                        {l.location}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock size={11} className="text-[#B8650A]" />
-                        Window: {tl.label}
-                      </span>
+                    <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                      <div className="text-lg font-bold text-[#0E6B45]">{formatKg(l.weightKg)}</div>
+                      <Link
+                        to={paths.listingDetail(l.id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#DDF7EE] text-[#0E6B45] hover:bg-[#7EE8C8]/40 transition-colors inline-flex items-center gap-1"
+                      >
+                        View Details
+                        <ChevronRight size={13} />
+                      </Link>
                     </div>
                   </div>
-
-                  <div className="text-right shrink-0 flex flex-col items-end gap-2">
-                    <div className="text-lg font-bold text-[#0E6B45]">{formatKg(l.weightKg)}</div>
-                    <Link
-                      to={paths.listingDetail(l.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#DDF7EE] text-[#0E6B45] hover:bg-[#7EE8C8]/40 transition-colors inline-flex items-center gap-1"
-                    >
-                      View Details
-                      <ChevronRight size={13} />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Honest empty state */
+            <div className="p-12 text-center">
+              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center mx-auto mb-3 border border-slate-100">
+                <Inbox size={22} />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">No Active Listings Recorded</h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mb-4">
+                {isSupplier
+                  ? 'You have not registered any active surplus batches. Add a new listing to start the recovery workflow.'
+                  : 'There are currently no surplus batches available in your sector. Check back soon or adjust filters.'}
+              </p>
+              {isSupplier && (
+                <Link to={paths.listingNew}>
+                  <Button variant="primary" className="text-xs font-bold py-2 px-4 gap-1.5">
+                    <Plus size={14} /> Add First Surplus Listing
+                  </Button>
+                </Link>
+              )}
+            </div>
+          )}
 
           <div className="p-4 bg-[#FAFAFC] border-t border-[#E6E8F0] flex flex-wrap items-center justify-between text-xs text-[#5B6272]">
-            <span>All items logged under cold-chain thermal audit standards.</span>
-            <button
-              type="button"
-              onClick={() => alert('Downloading Comprehensive FSSAI Audit Sheet (PDF)...')}
-              className="font-bold text-[#0E6B45] hover:underline cursor-pointer"
-            >
-              Download Audit Sheet (PDF)
-            </button>
+            <span>All inventory records adhere to cold-chain thermal audit standards.</span>
+            <Link to={paths.analytics} className="font-bold text-[#0E6B45] hover:underline">
+              View Analytics & Reporting →
+            </Link>
           </div>
         </div>
 
-        {/* Right Column (4 cols): Pickups & OTP release panel */}
+        {/* Right Column (4 cols): Scheduled Pickups & Queue */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Today's Pickups card */}
           <div className="bg-white rounded-2xl border border-[#E6E8F0] p-6 shadow-xs space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#111827]">Today's Scheduled Pickups</h3>
+              <h3 className="text-base font-bold text-[#111827]">
+                {isSupplier ? 'Scheduled Pickups' : 'My Active Claims'}
+              </h3>
               <span className="text-xs font-bold text-[#0E6B45] bg-[#DDF7EE] px-2 py-0.5 rounded-full">
-                {pickups.length} Active
+                {reservations.length} Active
               </span>
             </div>
 
-            {nextPickup && (
+            {nextPickup ? (
               <div className="p-4 bg-[#F6F7FB] border border-[#E6E8F0] rounded-xl space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[#B8650A]">{nextPickup.time}</span>
-                  <span className="font-bold text-[#111827]">{formatKg(nextPickup.allocationKg)}</span>
+                  <span className="font-bold text-[#B8650A] uppercase tracking-wide">
+                    Status: {nextPickup.reservationStatus.replace('_', ' ')}
+                  </span>
+                  <span className="font-bold text-[#111827]">
+                    {nextPickup.listing?.weightKg ? formatKg(nextPickup.listing.weightKg) : 'Scheduled'}
+                  </span>
                 </div>
 
-                <div className="font-bold text-xs text-[#111827]">{nextPickup.recipient}</div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-[#E6E8F0] text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#0E6B45] text-white flex items-center justify-center font-bold text-xs">
-                      {nextPickup.driverInitials}
-                    </div>
-                    <div>
-                      <div className="font-bold text-[#111827]">{nextPickup.driverName}</div>
-                      <div className="text-[10px] text-[#5B6272]">{nextPickup.driverVehicle}</div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => alert(`Calling driver: ${nextPickup.driverPhone}`)}
-                    className="p-1.5 rounded-lg bg-white border border-[#E6E8F0] text-[#0E6B45] hover:bg-[#EEF0FA]"
-                    title="Call Driver"
-                  >
-                    <Clock size={14} />
-                  </button>
+                <div className="font-bold text-xs text-[#111827]">
+                  {nextPickup.listing?.title || `Reservation #${nextPickup.id.slice(0, 8)}`}
                 </div>
 
-                {/* 4-Digit OTP Display */}
-                <div className="pt-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6272] mb-1.5">
-                    Release Handover OTP
-                  </div>
-                  <div className="flex gap-2">
-                    {nextPickup.otp.split('').map((digit, idx) => (
-                      <div
-                        key={idx}
-                        className="flex-1 py-2 text-center font-mono font-extrabold text-base bg-white border border-[#E6E8F0] rounded-lg text-[#0E6B45] shadow-xs"
-                      >
-                        {digit}
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant={authorizedOtp ? 'secondary' : 'primary'}
-                    className="w-full mt-2.5 text-xs font-bold py-2"
-                    onClick={() => {
-                      setAuthorizedOtp(true);
-                      alert('Dock security notified: Cargo release authorized for Driver Ramesh Kumar.');
-                    }}
-                  >
-                    {authorizedOtp ? '✓ Cargo Released' : 'Authorize Release'}
+                <div className="pt-2 border-t border-[#E6E8F0] text-xs text-[#5B6272]">
+                  <p className="flex items-center gap-1">
+                    <MapPin size={11} className="text-[#0E6B45]" />
+                    {nextPickup.pickupAddress || 'Pickup address on file'}
+                  </p>
+                </div>
+
+                <Link
+                  to={isSupplier ? '/supplier/pickups' : '/recipient/reservations'}
+                  className="block w-full pt-2"
+                >
+                  <Button variant="outline" className="w-full text-xs font-bold py-2">
+                    Open Handover Details →
                   </Button>
-                </div>
+                </Link>
+              </div>
+            ) : (
+              <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <Calendar size={20} className="mx-auto text-slate-400 mb-2" />
+                <p className="text-xs font-medium text-slate-600">No scheduled handovers</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {isSupplier
+                    ? 'When a recipient claims a listing, pickup coordination will appear here.'
+                    : 'Claim an active surplus listing to schedule a collection.'}
+                </p>
               </div>
             )}
-
-            {/* Verified Chain of Custody Timeline */}
-            <div className="space-y-3 pt-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#5B6272]">
-                Verified Chain-of-Custody
-              </h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-[#0E6B45] mt-1.5 shrink-0" />
-                  <div>
-                    <span className="font-bold text-[#111827]">Batch Packed & Weighed</span>
-                    <span className="text-[#5B6272] block text-[11px]">15:45 · Sous Chef Anita S.</span>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-[#0E6B45] mt-1.5 shrink-0" />
-                  <div>
-                    <span className="font-bold text-[#111827]">Core Temp 3.4°C Verified</span>
-                    <span className="text-[#5B6272] block text-[11px]">16:10 · HACCP Sensor Log</span>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-[#B8650A] mt-1.5 shrink-0" />
-                  <div>
-                    <span className="font-bold text-[#111827]">Driver En Route to Dock 2</span>
-                    <span className="text-[#5B6272] block text-[11px]">ETA 17:35 · Robin Hood Army</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Skeleton() {
-  return (
-    <div className="max-w-[1240px] mx-auto px-6 py-8 space-y-8 animate-pulse">
-      <div className="h-44 bg-gray-200 rounded-2xl" />
-      <div className="grid grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-32 bg-gray-200 rounded-2xl" />
-        ))}
-      </div>
-      <div className="h-96 bg-gray-200 rounded-2xl" />
     </div>
   );
 }

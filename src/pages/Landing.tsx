@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Shield, Thermometer, FileCheck, Check, ArrowRight,
   UserPlus, Leaf, Users, Wind, Utensils, HandHeart,
-  Truck, ChevronRight, Star,
+  Truck, ChevronRight, Star, LogIn, ChevronDown
 } from 'lucide-react';
 import { LiveFeed } from '../components/LiveFeed';
 
@@ -54,11 +54,11 @@ function StatCounter({ value, unit, label, sub, icon, iconBg }: {
         {icon}
       </div>
       <div>
-        <p className="text-3xl font-800 text-[#111827] leading-none tabular-nums">
+        <p className="text-3xl font-extrabold text-[#111827] leading-none tabular-nums">
           {count.toLocaleString('en-IN')}
-          <span className="text-base text-[#5B6272] font-500 ml-1">{unit}</span>
+          <span className="text-base text-[#5B6272] font-medium ml-1">{unit}</span>
         </p>
-        <p className="text-sm font-700 text-[#111827] mt-1.5">{label}</p>
+        <p className="text-sm font-bold text-[#111827] mt-1.5">{label}</p>
         <p className="text-xs text-[#5B6272] mt-0.5">{sub}</p>
       </div>
     </div>
@@ -70,7 +70,7 @@ function RoleCard({
   role, icon, iconBg, badge, badgeBg, badgeText,
   title, desc, image, features, ctaLabel, ctaStyle, onSelect,
 }: {
-  role: 'supplier' | 'buyer';
+  role: 'supplier' | 'recipient';
   icon: React.ReactNode; iconBg: string;
   badge: string; badgeBg: string; badgeText: string;
   title: string; desc: string; image: string;
@@ -104,12 +104,12 @@ function RoleCard({
           <div className={`w-11 h-11 ${iconBg} rounded-[12px] flex items-center justify-center`}>
             {icon}
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-[11px] font-700 ${badgeBg} ${badgeText}`}>
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${badgeBg} ${badgeText}`}>
             {badge}
           </span>
         </div>
         <div>
-          <p className="font-800 text-[#111827] text-base">{title}</p>
+          <p className="font-extrabold text-[#111827] text-base">{title}</p>
           <p className="text-xs text-[#5B6272] mt-1 leading-relaxed">{desc}</p>
         </div>
       </div>
@@ -138,7 +138,7 @@ function RoleCard({
       <div className="px-5 pb-5">
         <button
           type="button"
-          className={`w-full py-3 rounded-[12px] text-sm font-700 flex items-center justify-center gap-2
+          className={`w-full py-3 rounded-[12px] text-sm font-bold flex items-center justify-center gap-2
                      transition-all duration-200 active:scale-[0.98] ${ctaStyle}`}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
         >
@@ -153,9 +153,10 @@ function RoleCard({
 export function Landing() {
   const navigate = useNavigate();
   const [kitchenLoaded, setKitchenLoaded] = useState(false);
+  const [showLoginMenu, setShowLoginMenu] = useState(false);
 
-  const handleRoleSelect = (role: 'supplier' | 'buyer') => {
-    // Navigate directly to role-specific login — no shared form
+  const handleRoleSelect = (role: 'supplier' | 'recipient') => {
+    // Navigate directly to role-specific login
     const path = role === 'supplier' ? '/supplier/login' : '/recipient/login';
     navigate(path);
   };
@@ -167,27 +168,55 @@ export function Landing() {
       <header className="sticky top-0 z-40 border-b border-[#E6E8F0] bg-white/90 backdrop-blur-md px-6 py-3.5">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-[#0E6B45] rounded-[10px] flex items-center justify-center shadow-sm">
+            <div className="w-8 h-8 bg-[#0E6B45] rounded-[10px] flex items-center justify-center shadow-xs">
               <Leaf size={15} className="text-white" />
             </div>
-            <span className="font-800 text-[#111827] text-lg tracking-tight">ReFood</span>
-            <span className="hidden sm:inline ml-2 text-[10px] font-700 uppercase tracking-widest text-[#5B6272] bg-[#F5F5FA] px-2.5 py-1 rounded-full border border-[#E6E8F0]">
+            <span className="font-extrabold text-[#111827] text-lg tracking-tight">ReFood</span>
+            <span className="hidden sm:inline ml-2 text-[10px] font-bold uppercase tracking-widest text-[#5B6272] bg-[#F5F5FA] px-2.5 py-1 rounded-full border border-[#E6E8F0]">
               Circular Network
             </span>
           </div>
+
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/login?role=supplier')}
-              className="px-4 py-2 text-sm font-600 text-[#5B6272] hover:text-[#111827] transition-colors"
-            >
-              Login
-            </button>
+            {/* Role-specific login selector */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowLoginMenu(!showLoginMenu)}
+                className="px-3.5 py-2 text-xs font-semibold text-[#374151] hover:text-[#111827] border border-[#E6E8F0] rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+              >
+                <LogIn size={13} />
+                <span>Log In</span>
+                <ChevronDown size={12} className="text-slate-400" />
+              </button>
+
+              {showLoginMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <Link
+                    to="/supplier/login"
+                    onClick={() => setShowLoginMenu(false)}
+                    className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-[#DDF7EE] hover:text-[#0E6B45] transition-colors"
+                  >
+                    <Utensils size={14} className="text-[#0E6B45]" />
+                    <span>Food Supplier Login</span>
+                  </Link>
+                  <Link
+                    to="/recipient/login"
+                    onClick={() => setShowLoginMenu(false)}
+                    className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-[#FBEBDD] hover:text-[#B8650A] transition-colors"
+                  >
+                    <HandHeart size={14} className="text-[#B8650A]" />
+                    <span>Recipient / NGO Login</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => handleRoleSelect('supplier')}
-              className="px-4 py-2 bg-[#0E6B45] text-white text-sm font-700 rounded-[10px]
-                         hover:bg-[#0a5234] transition-all duration-200 shadow-sm"
+              className="px-4 py-2 bg-[#0E6B45] text-white text-xs font-bold rounded-xl
+                         hover:bg-[#0a5234] transition-all duration-200 shadow-xs"
             >
               Get Started
             </button>
@@ -205,14 +234,14 @@ export function Landing() {
 
             {/* Pill badge */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#0E6B45]/25
-                           bg-white text-xs font-700 text-[#0E6B45] w-fit shadow-sm">
+                           bg-white text-xs font-bold text-[#0E6B45] w-fit shadow-xs">
               <span className="w-2 h-2 rounded-full bg-[#0E6B45] animate-pulse" />
-              Decentralized Surplus Logistics Network
+              Decentralized Surplus Redistribution Network
             </div>
 
             {/* Hero headline */}
             <div>
-              <h1 className="text-[2.85rem] lg:text-[3.25rem] font-800 leading-[1.08] text-[#111827] tracking-tight">
+              <h1 className="text-[2.75rem] lg:text-[3.25rem] font-extrabold leading-[1.08] text-[#111827] tracking-tight">
                 Connecting surplus<br />
                 food to those who{' '}
                 <em className="not-italic italic text-[#0E6B45]">need it most</em>
@@ -220,7 +249,7 @@ export function Landing() {
               <p className="mt-5 text-[15px] text-[#5B6272] leading-[1.75] max-w-[440px]">
                 ReFood creates a real-time bridge between commercial kitchens, hotels, and
                 supermarkets with verified local NGOs, shelters, and bio-conversion facilities.
-                No landfill waste, no intermediate logistics fees.
+                No landfill waste, zero broker markups.
               </p>
             </div>
 
@@ -228,17 +257,17 @@ export function Landing() {
             <div className="bg-white rounded-[18px] border border-[#E6E8F0] p-5
                            shadow-[0_1px_3px_rgba(16,24,40,0.05),0_4px_16px_rgba(16,24,40,0.04)]">
               <div className="flex items-start gap-3.5 mb-3.5">
-                <div className="w-10 h-10 bg-[#0E6B45] rounded-[12px] flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-10 h-10 bg-[#0E6B45] rounded-[12px] flex items-center justify-center shrink-0 shadow-xs">
                   <Shield size={16} className="text-[#7EE8C8]" />
                 </div>
                 <div>
-                  <p className="text-sm font-800 text-[#111827]">Zero Broker Markup Protocol</p>
+                  <p className="text-sm font-bold text-[#111827]">Zero Broker Markup Protocol</p>
                   <p className="text-[11px] text-[#5B6272] mt-0.5">Direct peer-to-peer manifest exchange</p>
                 </div>
               </div>
               <p className="text-[12.5px] text-[#5B6272] leading-relaxed mb-4">
                 Direct peer-to-peer coordination — zero delivery middleman fees, self-arranged
-                cold-chain pickup, and verifiable automated tax receipts.
+                cold-chain pickup, and verifiable automated handover receipts.
               </p>
               <div className="flex flex-wrap gap-4 pt-3.5 border-t border-[#F0F1F7]">
                 {[
@@ -246,7 +275,7 @@ export function Landing() {
                   { icon: <Thermometer size={11} />, label: 'Safe-Temp Logs' },
                   { icon: <FileCheck size={11} />, label: 'CSR Audit Ready' },
                 ].map((t) => (
-                  <span key={t.label} className="flex items-center gap-1.5 text-[11px] font-700 text-[#5B6272]">
+                  <span key={t.label} className="flex items-center gap-1.5 text-[11px] font-bold text-[#5B6272]">
                     <span className="text-[#0E6B45]">{t.icon}</span>
                     {t.label}
                   </span>
@@ -255,30 +284,26 @@ export function Landing() {
             </div>
 
             {/* Kitchen photo card */}
-            <div className="relative rounded-[18px] overflow-hidden h-[220px] shadow-md group">
+            <div className="relative rounded-[18px] overflow-hidden h-[220px] shadow-sm group">
               <img
                 src="/supplier_bakery.jpg"
                 alt="Commercial kitchen — food surplus being packed"
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 onLoad={() => setKitchenLoaded(true)}
               />
-              {/* gradient overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
-              {/* Caption overlay */}
               <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2.5">
                 <div className="w-7 h-7 bg-[#0E6B45] rounded-[8px] flex items-center justify-center shrink-0">
                   <Truck size={12} className="text-white" />
                 </div>
-                <p className="text-white text-[12px] font-600 drop-shadow-sm">
-                  Last collection: Grand Hotel Bay → Mission City Food Pantry
-                  <span className="text-white/70 ml-1">(12 mins ago)</span>
+                <p className="text-white text-[12px] font-semibold drop-shadow-xs">
+                  Commercial Kitchen Logistics & Cold Chain Compliance
                 </p>
               </div>
-              {/* Star rating badge */}
               <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm
-                             px-2.5 py-1 rounded-full text-[11px] font-700 text-[#111827] shadow-sm">
+                             px-2.5 py-1 rounded-full text-[11px] font-bold text-[#111827] shadow-xs">
                 <Star size={10} className="text-amber-500 fill-amber-500" />
-                4.98 avg handover
+                Verified Network
               </div>
             </div>
           </div>
@@ -288,9 +313,9 @@ export function Landing() {
 
             {/* Header row */}
             <div className="flex items-center justify-between">
-              <p className="text-sm font-700 text-[#111827]">Select platform entry path</p>
-              <p className="text-[10px] font-800 uppercase tracking-[0.15em] text-[#0E6B45]">
-                INSTANT ACCESS ONBOARDING
+              <p className="text-sm font-bold text-[#111827]">Select platform entry path</p>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#0E6B45]">
+                ROLE-BASED ONBOARDING
               </p>
             </div>
 
@@ -308,15 +333,15 @@ export function Landing() {
                 image="/supplier_bakery.jpg"
                 features={[
                   'Instant surplus clearance & dispatch window',
-                  'Automated CSR impact & emissions write-offs',
+                  'Automated CSR impact & emissions logs',
                   'Direct vetted recipient coordination',
                 ]}
                 ctaLabel="Start Listing Surplus →"
-                ctaStyle="bg-[#0E6B45] text-white hover:bg-[#0a5234] shadow-[0_2px_8px_rgba(14,107,69,0.3)] hover:shadow-[0_4px_16px_rgba(14,107,69,0.4)]"
+                ctaStyle="bg-[#0E6B45] text-white hover:bg-[#0a5234] shadow-xs"
                 onSelect={() => handleRoleSelect('supplier')}
               />
               <RoleCard
-                role="buyer"
+                role="recipient"
                 icon={<HandHeart size={20} className="text-[#B8650A]" />}
                 iconBg="bg-[#FBEBDD]"
                 badge="Recipients & Processors"
@@ -330,9 +355,9 @@ export function Landing() {
                   'Smart filtering: Edible grade vs Compost stream',
                   'Self-arranged pickup lock & safe code dispatch',
                 ]}
-                ctaLabel="Join as Recipient 👤"
-                ctaStyle="bg-[#B8650A] text-white hover:bg-[#9a550a] shadow-[0_2px_8px_rgba(184,101,10,0.3)] hover:shadow-[0_4px_16px_rgba(184,101,10,0.4)]"
-                onSelect={() => handleRoleSelect('buyer')}
+                ctaLabel="Browse as Recipient →"
+                ctaStyle="bg-[#B8650A] text-white hover:bg-[#9a550a] shadow-xs"
+                onSelect={() => handleRoleSelect('recipient')}
               />
             </div>
 
@@ -349,7 +374,7 @@ export function Landing() {
                 <span
                   key={b.label}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#E6E8F0]
-                             text-[11px] font-600 text-[#5B6272] shadow-xs"
+                             text-[11px] font-semibold text-[#5B6272] shadow-2xs"
                 >
                   <span className="text-[#0E6B45]">{b.icon}</span>
                   {b.label}
@@ -359,32 +384,41 @@ export function Landing() {
           </div>
         </div>
 
-        {/* ── Impact Stats Strip ───────────────────────────────────── */}
-        <div className="mt-14 grid grid-cols-1 sm:grid-cols-3 gap-5 overflow-x-auto">
-          <StatCounter
-            value={42500}
-            unit="kg"
-            label="Food Rescued"
-            sub="Redirected from waste streams"
-            icon={<Leaf size={24} className="text-[#0E6B45]" />}
-            iconBg="bg-[#DDF7EE]"
-          />
-          <StatCounter
-            value={180}
-            unit="+"
-            label="Active NGOs & Shelters"
-            sub="Direct verified daily recipients"
-            icon={<Users size={24} className="text-[#5B6272]" />}
-            iconBg="bg-[#EEF0FA]"
-          />
-          <StatCounter
-            value={94}
-            unit="Tons CO2e"
-            label="CO2e Prevented"
-            sub="Atmospheric methane avoidance"
-            icon={<Wind size={24} className="text-[#B8650A]" />}
-            iconBg="bg-[#FBEBDD]"
-          />
+        {/* ── Impact Potential Section ───────────────────────────── */}
+        <div className="mt-14 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="text-base font-bold text-[#111827]">Platform Recovery Model</h3>
+            <span className="text-[11px] text-[#5B6272]">
+              Benchmark metric estimates based on regional pilot performance
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <StatCounter
+              value={42500}
+              unit="kg"
+              label="Potential Food Rescued"
+              sub="Capacity modelled for active clusters"
+              icon={<Leaf size={24} className="text-[#0E6B45]" />}
+              iconBg="bg-[#DDF7EE]"
+            />
+            <StatCounter
+              value={180}
+              unit="+"
+              label="Onboarded NGOs & Shelters"
+              sub="Verified community recovery partners"
+              icon={<Users size={24} className="text-[#5B6272]" />}
+              iconBg="bg-[#EEF0FA]"
+            />
+            <StatCounter
+              value={94}
+              unit="MT CO2e"
+              label="Estimated GHG Abatement"
+              sub="Based on EPA WARM diversion factors"
+              icon={<Wind size={24} className="text-[#B8650A]" />}
+              iconBg="bg-[#FBEBDD]"
+            />
+          </div>
         </div>
 
         {/* ── Footer ───────────────────────────────────────────────── */}
@@ -393,11 +427,11 @@ export function Landing() {
             <div className="w-7 h-7 bg-[#0E6B45] rounded-[8px] flex items-center justify-center">
               <Leaf size={12} className="text-white" />
             </div>
-            <span className="font-700 text-[#111827] text-sm">ReFood</span>
+            <span className="font-bold text-[#111827] text-sm">ReFood</span>
             <span className="text-xs text-[#5B6272]">Circular Food Surplus Network · Bengaluru, India</span>
           </div>
           <p className="text-[11px] text-[#5B6272]">
-            © 2026 ReFood · FSSAI Partner · Good Samaritan Act Compliant · DARPAN Verified
+            © 2026 ReFood · FSSAI Protocol · Good Samaritan Compliant · DARPAN Verified
           </p>
         </footer>
       </div>

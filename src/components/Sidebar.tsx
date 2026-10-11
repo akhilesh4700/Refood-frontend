@@ -2,38 +2,35 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Leaf, LayoutDashboard, ListPlus, ShoppingBag, Truck,
-  BarChart3, Bell, LogOut, X, AlertTriangle, RefreshCw,
+  BarChart3, Bell, LogOut, X, AlertTriangle,
   Package, Search,
 } from 'lucide-react';
 import { cn } from './ui/utils';
-import {
-  getActiveUser, signOut, resetDatabase,
-  subscribeToDataChanges, type ActiveUser,
-} from '../api';
+import { getStoredUser, signOut, isAuthenticated } from '../api';
+import type { User } from '../types/domain';
 
 /* ─── Nav link definitions per role ─────────────────────────────────── */
 const SUPPLIER_NAV = [
-  { to: '/supplier/dashboard',  label: 'Dashboard',          icon: LayoutDashboard },
-  { to: '/supplier/listings',   label: 'My Listings',        icon: Package         },
-  { to: '/supplier/listings/new', label: 'List Surplus Food', icon: ListPlus       },
-  { to: '/supplier/pickups',    label: 'Pickups & Handover', icon: Truck           },
-  { to: '/supplier/analytics',  label: 'Analytics',          icon: BarChart3       },
-  { to: '/supplier/notifications', label: 'Notifications',   icon: Bell            },
+  { to: '/supplier/dashboard',     label: 'Dashboard',          icon: LayoutDashboard },
+  { to: '/supplier/listings',      label: 'My Listings',        icon: Package         },
+  { to: '/supplier/listings/new',  label: 'List Surplus Food',  icon: ListPlus        },
+  { to: '/supplier/pickups',       label: 'Pickups & Handover', icon: Truck           },
+  { to: '/supplier/analytics',     label: 'Analytics',          icon: BarChart3       },
+  { to: '/supplier/notifications', label: 'Notifications',      icon: Bell            },
 ];
 
 const RECIPIENT_NAV = [
-  { to: '/recipient/dashboard', label: 'Dashboard',          icon: LayoutDashboard },
-  { to: '/recipient/browse',    label: 'Browse Surplus',     icon: ShoppingBag     },
-  { to: '/recipient/reservations', label: 'My Reservations', icon: Truck           },
-  { to: '/recipient/analytics', label: 'Impact & Analytics', icon: BarChart3       },
-  { to: '/recipient/notifications', label: 'Notifications',  icon: Bell            },
+  { to: '/recipient/dashboard',     label: 'Dashboard',           icon: LayoutDashboard },
+  { to: '/recipient/browse',        label: 'Browse Surplus',      icon: ShoppingBag     },
+  { to: '/recipient/reservations',  label: 'My Reservations',     icon: Truck           },
+  { to: '/recipient/analytics',     label: 'Impact & Analytics',  icon: BarChart3       },
+  { to: '/recipient/notifications', label: 'Notifications',       icon: Bell            },
 ];
 
 /* ─── Sign-Out Popover ───────────────────────────────────────────────── */
-function SignOutPopover({ onConfirm, onCancel, accent }: {
+function SignOutPopover({ onConfirm, onCancel }: {
   onConfirm: () => void;
   onCancel: () => void;
-  accent: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -79,7 +76,7 @@ function SignOutPopover({ onConfirm, onCancel, accent }: {
 function SidebarContent({
   user, nav, accent, accentLight, onClose, onSignOut,
 }: {
-  user: ActiveUser;
+  user: User | null;
   nav: typeof SUPPLIER_NAV;
   accent: string;
   accentLight: string;
@@ -93,6 +90,9 @@ function SidebarContent({
     if (to.endsWith('/dashboard')) return pathname.endsWith('/dashboard');
     return pathname.startsWith(to);
   };
+
+  const roleLabel = user?.role === 'supplier' ? '● Supplier Mode' : '● Recipient Mode';
+  const displayAvatar = user?.avatar || (user?.name?.slice(0, 2).toUpperCase() ?? '??');
 
   return (
     <div className="flex flex-col h-full">
@@ -122,11 +122,11 @@ function SidebarContent({
           className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-800 uppercase tracking-widest"
           style={{ background: accentLight, color: accent }}
         >
-          {user.role === 'supplier' ? '● Supplier Mode' : '● Recipient Mode'}
+          {roleLabel}
         </span>
       </div>
 
-      {/* Search */}
+      {/* Search — visual only, routes to role-specific search */}
       <div className="px-4 mb-4 shrink-0">
         <div className="relative">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
@@ -135,7 +135,15 @@ function SidebarContent({
             placeholder="Search…"
             className="w-full pl-7 pr-3 py-2 text-xs bg-[#F5F5FA] border border-[#E6E8F0] rounded-[10px]
                        text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none transition-all"
-            style={{ '--tw-ring-color': accent } as React.CSSProperties}
+            readOnly
+            onClick={() => {
+              // Navigate to the role-appropriate search/browse page
+              const searchPath = user?.role === 'supplier'
+                ? '/supplier/listings'
+                : '/recipient/browse';
+              // useNavigate is in scope via the parent, but we'll use a link pattern
+              window.location.href = searchPath;
+            }}
           />
         </div>
       </div>
@@ -161,7 +169,6 @@ function SidebarContent({
                   )}
                   style={active ? { background: accent } : {}}
                 >
-                  {/* Active left-border indicator */}
                   {active && (
                     <span
                       className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full"
@@ -183,33 +190,21 @@ function SidebarContent({
       {/* Bottom section */}
       <div className="px-3 pb-4 shrink-0 mt-auto">
         <div className="border-t border-[#E6E8F0] pt-4 space-y-1">
-          {/* Reset demo data */}
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Reset all demo data back to baseline?')) {
-                resetDatabase();
-                window.location.reload();
-              }
-            }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-xs font-600
-                       text-[#9CA3AF] hover:text-[#5B6272] hover:bg-[#F0F1F7] transition-colors"
-          >
-            <RefreshCw size={14} />
-            Reset Demo Data
-          </button>
-
           {/* User card */}
           <div className="flex items-center gap-3 px-3 py-3 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]">
             <div
               className="w-9 h-9 rounded-full text-white text-xs font-800 flex items-center justify-center shrink-0 shadow-sm"
               style={{ background: accent }}
             >
-              {user.avatar}
+              {displayAvatar}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-700 text-[#111827] truncate">{user.name}</p>
-              <p className="text-[10px] text-[#5B6272] truncate">{user.badge}</p>
+              <p className="text-xs font-700 text-[#111827] truncate">
+                {user?.orgName || user?.name || 'Loading…'}
+              </p>
+              <p className="text-[10px] text-[#5B6272] truncate">
+                {user?.badge || (user?.role === 'supplier' ? 'Supplier' : 'Recipient')}
+              </p>
             </div>
           </div>
 
@@ -217,7 +212,6 @@ function SidebarContent({
           <div className="relative">
             {showSignOutConfirm && (
               <SignOutPopover
-                accent={accent}
                 onConfirm={onSignOut}
                 onCancel={() => setShowSignOutConfirm(false)}
               />
@@ -241,22 +235,27 @@ function SidebarContent({
 /* ─── Main Sidebar Export ────────────────────────────────────────────── */
 export function Sidebar() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<ActiveUser>(getActiveUser());
+  const [user, setUser] = useState<User | null>(getStoredUser());
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Refresh user from storage on focus (handles tab-switch session changes)
   useEffect(() => {
-    const unsub = subscribeToDataChanges(() => setUser(getActiveUser()));
-    return unsub;
+    const refresh = () => setUser(getStoredUser());
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   }, []);
 
-  const isSupplier = user.role === 'supplier';
-  const nav    = isSupplier ? SUPPLIER_NAV : RECIPIENT_NAV;
-  const accent = isSupplier ? '#0E6B45' : '#B8650A';
-  const accentLight = isSupplier ? '#DDF7EE' : '#FBEBDD';
+  const isSupplier   = user?.role === 'supplier';
+  const nav          = isSupplier ? SUPPLIER_NAV : RECIPIENT_NAV;
+  const accent       = isSupplier ? '#0E6B45' : '#B8650A';
+  const accentLight  = isSupplier ? '#DDF7EE' : '#FBEBDD';
 
-  const handleSignOut = () => {
-    signOut();
-    navigate('/');
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } finally {
+      navigate('/');
+    }
   };
 
   const sharedProps = { user, nav, accent, accentLight, onSignOut: handleSignOut };
@@ -278,14 +277,12 @@ export function Sidebar() {
         </Link>
 
         <div className="flex items-center gap-2">
-          {/* Avatar */}
           <div
             className="w-8 h-8 rounded-full text-white text-xs font-800 flex items-center justify-center"
             style={{ background: accent }}
           >
-            {user.avatar}
+            {user?.avatar || '??'}
           </div>
-          {/* Hamburger */}
           <button
             onClick={() => setMobileOpen(true)}
             className="p-2 rounded-[10px] hover:bg-[#F0F1F7] text-[#5B6272]"
@@ -303,12 +300,10 @@ export function Sidebar() {
       {/* ── Mobile drawer overlay ────────────────────────────── */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          {/* Drawer panel */}
           <div className="relative w-[272px] bg-white h-full shadow-2xl flex flex-col overflow-y-auto animate-in slide-in-from-left duration-200">
             <SidebarContent
               {...sharedProps}

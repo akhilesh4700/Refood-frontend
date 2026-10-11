@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Leaf, Eye, EyeOff, Utensils, HandHeart,
-  ArrowLeft, CheckCircle2, Loader2,
+  ArrowLeft, CheckCircle2, Loader2, AlertCircle,
+  Building2, Phone, MapPin, User,
 } from 'lucide-react';
-import { signIn, type UserRole } from '../api';
+import { signIn, signUp, ApiUnavailableError } from '../api';
+import type { UserRole } from '../types/domain';
 
 /* ─── Role config (colors, copy, post-login redirect) ───────────────── */
 const CONFIG = {
@@ -17,10 +19,10 @@ const CONFIG = {
     badge:       'Donors & Supply',
     label:       'Food Supplier',
     subLabel:    'Hotels, bakeries, caterers, supermarkets',
-    ctaLabel:    'Sign in as Supplier',
+    ctaSignIn:   'Sign in as Supplier',
+    ctaSignUp:   'Create Supplier Account',
     postLogin:   '/supplier/dashboard',
-    signupPath:  '/supplier/login',
-    otherRole:   'buyer' as UserRole,
+    otherRole:   'recipient' as UserRole,
     otherLabel:  'Recipient / Processor',
     otherPath:   '/recipient/login',
     features: [
@@ -28,8 +30,9 @@ const CONFIG = {
       'Auto-generated FSSAI-compliant audit logs',
       'Real-time pickup tracking & OTP handover',
     ],
+    orgTypes: ['Hotel / Resort', 'Restaurant / Café', 'Bakery', 'Catering Company', 'Supermarket / Grocery', 'Corporate Cafeteria', 'Food Manufacturer', 'Other'],
   },
-  buyer: {
+  recipient: {
     accent:      '#B8650A',
     accentLight: '#FBEBDD',
     accentHover: '#9a550a',
@@ -38,9 +41,9 @@ const CONFIG = {
     badge:       'Recipients & Processors',
     label:       'Recipient / Processor',
     subLabel:    'NGOs, shelters, food banks, composters',
-    ctaLabel:    'Sign in as Recipient',
+    ctaSignIn:   'Sign in as Recipient',
+    ctaSignUp:   'Create Recipient Account',
     postLogin:   '/recipient/dashboard',
-    signupPath:  '/recipient/login',
     otherRole:   'supplier' as UserRole,
     otherLabel:  'Food Supplier',
     otherPath:   '/supplier/login',
@@ -49,13 +52,13 @@ const CONFIG = {
       'Smart filtering: Edible vs Organic Compost stream',
       'Safe-code pickup dispatch — no middlemen',
     ],
+    orgTypes: ['NGO / Charity', 'Shelter / Food Bank', 'Soup Kitchen', 'Community Centre', 'Composting Facility', 'Biogas Plant', 'Animal Feed Producer', 'Other'],
   },
 };
 
 type AuthMode = 'login' | 'signup';
 
 interface LoginProps {
-  /** Passed statically by the router — no runtime query param needed. */
   role: UserRole;
 }
 
@@ -64,32 +67,83 @@ export function Login({ role }: LoginProps) {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<AuthMode>('login');
-  const [orgName, setOrgName] = useState('');
+
+  // Shared fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [isApiPending, setIsApiPending] = useState(false);
+
+  // Sign-up only fields
+  const [orgName, setOrgName]       = useState('');
+  const [orgType, setOrgType]       = useState('');
+  const [contactName, setContactName] = useState('');
+  const [phone, setPhone]           = useState('');
+  const [address, setAddress]       = useState('');
+  const [city, setCity]             = useState('');
+  const [agreed, setAgreed]         = useState(false);
+
+  const validate = (): string | null => {
+    if (!email.trim()) return 'Email address is required.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Enter a valid email address.';
+    if (!password) return 'Password is required.';
+    if (password.length < 8) return 'Password must be at least 8 characters.';
+
+    if (mode === 'signup') {
+      if (!orgName.trim()) return 'Organisation name is required.';
+      if (!orgType) return 'Please select your organisation type.';
+      if (!contactName.trim()) return 'Contact person name is required.';
+      if (!phone.trim()) return 'Contact phone number is required.';
+      if (!address.trim()) return 'Address is required.';
+      if (!city.trim()) return 'City is required.';
+      if (!agreed) return 'Please accept the Terms of Service and Privacy Policy to continue.';
+    }
+
+    return null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!email.trim()) { setError('Email address is required.'); return; }
-    if (!password)     { setError('Password is required.'); return; }
-    if (password.length < 4) { setError('Password must be at least 4 characters.'); return; }
-    if (mode === 'signup' && !orgName.trim()) { setError('Organisation name is required.'); return; }
-    if (mode === 'signup' && !agreed) { setError('Please accept the terms to continue.'); return; }
+
+    const validationError = validate();
+    if (validationError) { setError(validationError); return; }
 
     setLoading(true);
     try {
-      await signIn(role, email.trim(), password);
+      if (mode === 'login') {
+        await signIn({ email: email.trim(), password, role });
+      } else {
+        await signUp({
+          role,
+          orgName: orgName.trim(),
+          orgType,
+          contactName: contactName.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          city: city.trim(),
+          password,
+          acceptedTerms: agreed,
+        });
+      }
       setSuccess(true);
-      await new Promise((r) => setTimeout(r, 650));
+      await new Promise((r) => setTimeout(r, 600));
       navigate(cfg.postLogin);
-    } catch {
-      setError('Authentication failed. Please try again.');
+    } catch (err) {
+      if (err instanceof ApiUnavailableError) {
+        setIsApiPending(true);
+        setError('');
+      } else {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Authentication failed. Please check your details and try again.'
+        );
+      }
       setLoading(false);
     }
   };
@@ -200,6 +254,21 @@ export function Login({ role }: LoginProps) {
               </div>
             </div>
 
+            {/* API pending notice */}
+            {isApiPending && (
+              <div className="mb-6 p-4 rounded-[14px] border border-amber-200 bg-amber-50 flex items-start gap-3">
+                <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-700 text-amber-800">Backend not yet connected</p>
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                    Authentication requires a backend API. Set{' '}
+                    <code className="font-mono bg-amber-100 px-1 rounded">VITE_API_BASE_URL</code>{' '}
+                    in <code className="font-mono bg-amber-100 px-1 rounded">.env</code> to connect to your backend.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {success ? (
               /* ── Success state ───── */
               <div className="flex flex-col items-center gap-4 py-10">
@@ -223,7 +292,7 @@ export function Login({ role }: LoginProps) {
                     <button
                       key={m}
                       type="button"
-                      onClick={() => { setMode(m); setError(''); }}
+                      onClick={() => { setMode(m); setError(''); setIsApiPending(false); }}
                       className={`flex-1 py-2 text-sm font-700 rounded-[10px] transition-all duration-200 ${
                         mode === m
                           ? 'bg-white text-[#111827] shadow-sm'
@@ -247,23 +316,113 @@ export function Login({ role }: LoginProps) {
                     </p>
                   </div>
 
-                  {/* Organisation name — signup only */}
+                  {/* ── Sign-up extra fields ── */}
                   {mode === 'signup' && (
-                    <div>
-                      <label className="text-xs font-700 text-[#374151] block mb-1.5">
-                        Organisation Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={orgName}
-                        onChange={(e) => setOrgName(e.target.value)}
-                        placeholder="e.g. Hotel Grand Royale"
-                        autoComplete="organization"
-                        className="w-full px-3.5 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
-                                   text-sm text-[#111827] placeholder:text-[#C4C9D4]
-                                   focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                          Organisation Name <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                          <input
+                            type="text"
+                            value={orgName}
+                            onChange={(e) => setOrgName(e.target.value)}
+                            placeholder="e.g. Hotel Grand Royale"
+                            autoComplete="organization"
+                            className="w-full pl-9 pr-3.5 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                       text-sm text-[#111827] placeholder:text-[#C4C9D4]
+                                       focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                          Organisation Type <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={orgType}
+                          onChange={(e) => setOrgType(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                     text-sm text-[#111827] focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                        >
+                          <option value="">Select type…</option>
+                          {cfg.orgTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                            Contact Person <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                            <input
+                              type="text"
+                              value={contactName}
+                              onChange={(e) => setContactName(e.target.value)}
+                              placeholder="Full name"
+                              className="w-full pl-9 pr-3 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                         text-sm text-[#111827] placeholder:text-[#C4C9D4]
+                                         focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                            Phone <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                            <input
+                              type="tel"
+                              value={phone}
+                              onChange={(e) => setPhone(e.target.value)}
+                              placeholder="+91 98765…"
+                              className="w-full pl-9 pr-3 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                         text-sm text-[#111827] placeholder:text-[#C4C9D4]
+                                         focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                          Address <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <MapPin size={14} className="absolute left-3 top-3 text-[#9CA3AF]" />
+                          <input
+                            type="text"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            placeholder="Street address"
+                            className="w-full pl-9 pr-3.5 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                       text-sm text-[#111827] placeholder:text-[#C4C9D4]
+                                       focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-700 text-[#374151] block mb-1.5">
+                          City <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                          placeholder="e.g. Bengaluru"
+                          className="w-full px-3.5 py-2.5 rounded-[12px] bg-[#F5F5FA] border border-[#E6E8F0]
+                                     text-sm text-[#111827] placeholder:text-[#C4C9D4]
+                                     focus:outline-none focus:border-[#0E6B45] focus:ring-2 focus:ring-[#0E6B45]/10 transition-all"
+                        />
+                      </div>
+                    </>
                   )}
 
                   {/* Email */}
@@ -293,8 +452,11 @@ export function Login({ role }: LoginProps) {
                       {mode === 'login' && (
                         <button
                           type="button"
-                          className="text-[11px] font-700 hover:underline"
-                          style={{ color: cfg.accent }}
+                          className="text-[11px] font-700 text-[#5B6272] hover:text-[#111827] transition-colors"
+                          onClick={() => {
+                            // Integration pending: password reset requires backend
+                            alert('Password reset requires backend integration.');
+                          }}
                         >
                           Forgot password?
                         </button>
@@ -321,6 +483,11 @@ export function Login({ role }: LoginProps) {
                         {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
+                    {mode === 'signup' && (
+                      <p className="text-[11px] text-[#9CA3AF] mt-1">
+                        Minimum 8 characters.
+                      </p>
+                    )}
                   </div>
 
                   {/* T&C — signup only */}
@@ -343,16 +510,17 @@ export function Login({ role }: LoginProps) {
                         <span className="font-700 cursor-pointer hover:underline" style={{ color: cfg.accent }}>
                           Privacy Policy
                         </span>
-                        . Your organisation will be verified within 24 hours.
+                        . Your organisation details will be reviewed. Verified status is issued by ReFood after review.
                       </label>
                     </div>
                   )}
 
                   {/* Error */}
                   {error && (
-                    <p className="text-xs font-600 text-red-700 bg-red-50 border border-red-200 px-3 py-2.5 rounded-[10px]">
+                    <div className="flex items-start gap-2.5 text-xs font-600 text-red-700 bg-red-50 border border-red-200 px-3 py-2.5 rounded-[10px]">
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
                       {error}
-                    </p>
+                    </div>
                   )}
 
                   {/* Submit */}
@@ -366,7 +534,7 @@ export function Login({ role }: LoginProps) {
                   >
                     {loading
                       ? <><Loader2 size={16} className="animate-spin" /> Signing in…</>
-                      : cfg.ctaLabel}
+                      : (mode === 'login' ? cfg.ctaSignIn : cfg.ctaSignUp)}
                   </button>
 
                   {/* Switch to other role (mobile-visible; desktop has left panel) */}

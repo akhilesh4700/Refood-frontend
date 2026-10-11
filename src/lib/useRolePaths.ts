@@ -4,7 +4,8 @@
  * internal navigation links always point to the right route.
  */
 import { useMemo } from 'react';
-import { getActiveUser } from '../api';
+import { useLocation } from 'react-router-dom';
+import { getStoredUser } from '../api';
 
 export interface RolePaths {
   dashboard: string;
@@ -19,7 +20,9 @@ export interface RolePaths {
 }
 
 export function useRolePaths(): RolePaths {
-  const role = getActiveUser().role;
+  const location = useLocation();
+  const storedUser = getStoredUser();
+  const role = storedUser?.role ?? (location.pathname.startsWith('/supplier') ? 'supplier' : 'recipient');
 
   return useMemo<RolePaths>(() => {
     if (role === 'supplier') {

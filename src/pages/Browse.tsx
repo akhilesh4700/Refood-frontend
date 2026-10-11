@@ -1,73 +1,81 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { LayoutGrid, Map, Wifi, HeartHandshake, Plus } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import {
+  Search,
+  Filter,
+  Wifi,
+  HeartHandshake,
+  Loader2,
+  AlertCircle,
+  PackageX,
+  RefreshCw,
+  Sparkles,
+  SlidersHorizontal,
+  MapPin,
+} from 'lucide-react';
 import { ListingCard } from '../components/ListingCard';
-import { FilterChip } from '../components/ui/SegmentedControl';
-import { Badge } from '../components/ui/Badge';
-import { cn } from '../components/ui/utils';
-import { getListings, getActiveUser, subscribeToDataChanges } from '../api';
-import type { Listing } from '../mocks/data';
+import { getListings, isApiConfigured } from '../api';
+import type { Listing, ListingType } from '../types/domain';
 
-type Stream = 'all' | 'edible' | 'organic' | 'urgent' | 'near';
+type StreamFilter = 'all' | 'edible' | 'organic';
 
 export function Browse() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'grid' | 'map'>('grid');
-  const [stream, setStream] = useState<Stream>('all');
-  const [search, setSearch] = useState('');
-  const [maxDist, setMaxDist] = useState(25);
-  const [activeUser, setActiveUser] = useState(getActiveUser());
+  const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    const l = await getListings();
-    setListings(l);
-    setActiveUser(getActiveUser());
-    setLoading(false);
-  };
+  // Filters
+  const [streamFilter, setStreamFilter] = useState<StreamFilter>('all');
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const fetchListings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const typeParam: ListingType | undefined =
+        streamFilter === 'all' ? undefined : streamFilter;
+      const res = await getListings({
+        type: typeParam,
+        search: search.trim() || undefined,
+        status: 'active',
+      });
+      // Handle both PaginatedResponse and raw array defensively
+      const items = Array.isArray(res) ? res : res?.items ?? [];
+      setListings(items);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to connect to marketplace service';
+      setError(msg);
+      setListings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [streamFilter, search]);
 
   useEffect(() => {
-    loadData();
-    const unsubscribe = subscribeToDataChanges(() => {
-      loadData();
-    });
-    return unsubscribe;
-  }, []);
+    fetchListings();
+  }, [fetchListings]);
 
-  const filtered = useMemo(() => {
+  // Extract unique categories from current items
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    listings.forEach((l) => {
+      if (l.category) set.add(l.category);
+    });
+    return Array.from(set);
+  }, [listings]);
+
+  // Filter listings by selected category and search locally if items present
+  const displayListings = useMemo(() => {
     return listings.filter((l) => {
-      if (stream === 'edible' && l.stream !== 'edible') return false;
-      if (stream === 'organic' && l.stream !== 'organic') return false;
-      if (stream === 'urgent' && l.stream !== 'urgent') return false;
-      if (stream === 'near' && l.distance > 5) return false;
-      if (l.distance > maxDist) return false;
-      if (
-        search &&
-        !l.title.toLowerCase().includes(search.toLowerCase()) &&
-        !l.supplier.toLowerCase().includes(search.toLowerCase()) &&
-        !l.category.toLowerCase().includes(search.toLowerCase())
-      ) {
+      if (selectedCategory !== 'all' && l.category !== selectedCategory) {
         return false;
       }
       return true;
     });
-  }, [listings, stream, search, maxDist]);
+  }, [listings, selectedCategory]);
 
-  const counts = {
-    all: listings.length,
-    edible: listings.filter((l) => l.stream === 'edible').length,
-    organic: listings.filter((l) => l.stream === 'organic').length,
-    urgent: listings.filter((l) => l.stream === 'urgent').length,
-    near: listings.filter((l) => l.distance <= 5).length,
-  };
-
-  const totalEdibleKg = listings
-    .filter((l) => l.stream === 'edible' || l.stream === 'urgent')
-    .reduce((s, l) => s + (l.weightKg || 0), 0);
-
-  const totalOrganicKg = listings
-    .filter((l) => l.stream === 'organic')
-    .reduce((s, l) => s + (l.weightKg || 0), 0);
+  const edibleCount = listings.filter((l) => l.type === 'edible').length;
+  const organicCount = listings.filter((l) => l.type === 'organic').length;
 
   return (
     <div className="max-w-[1240px] mx-auto px-6 py-8 space-y-6">
@@ -76,241 +84,168 @@ export function Browse() {
         <div>
           <p className="text-[10px] uppercase tracking-widest text-[#5B6272] font-semibold mb-1 flex items-center gap-2">
             <Wifi size={11} className="text-[#0E6B45]" />
-            CIRCULARITY EXCHANGE · LIVE TELEMETRY · {listings.length} Active Batches in Range
+            CIRCULARITY EXCHANGE · RECIPIENT RECOVERY MARKETPLACE
           </p>
           <h1 className="text-2xl lg:text-3xl font-bold text-[#111827] tracking-tight">
-            Recovery & Surplus Marketplace
+            Surplus & Biomass Marketplace
           </h1>
-          <p className="text-xs text-[#5B6272] mt-1 max-w-2xl">
-            Real-time cold-chain certified edible surplus and clean organic streams mapped for verified NGOs, micro-pantries, and bio-conversion partners.
+          <p className="text-xs text-[#5B6272] mt-1 max-w-2xl leading-relaxed">
+            Direct recovery portal for verified NGOs, food rescue organizations, and licensed organic recyclers.
+            All batches are temperature-logged and time-stamped by suppliers.
           </p>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          {activeUser.role === 'supplier' ? (
-            <Link
-              to="/listings/new"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#0E6B45] hover:bg-[#0A5234] text-white shadow-xs transition-colors"
-            >
-              <Plus size={14} />
-              + Add New Surplus
-            </Link>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#FBEBDD] text-[#B8650A] border border-[#B8650A]/20">
-              <HeartHandshake size={14} />
-              Buyer Mode Active: 1-Click NGO Claim
-            </span>
-          )}
-
-          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#E6E8F0]">
-            <button
-              onClick={() => setView('grid')}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
-                view === 'grid'
-                  ? 'bg-[#EEF0FA] text-[#0E6B45]'
-                  : 'text-[#5B6272] hover:text-[#111827]'
-              )}
-            >
-              <LayoutGrid size={13} />
-              Grid View
-            </button>
-            <button
-              onClick={() => setView('map')}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer',
-                view === 'map'
-                  ? 'bg-[#EEF0FA] text-[#0E6B45]'
-                  : 'text-[#5B6272] hover:text-[#111827]'
-              )}
-            >
-              <Map size={13} />
-              Map View
-            </button>
-          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FBEBDD] text-[#B8650A] border border-[#B8650A]/20">
+            <HeartHandshake size={14} />
+            Verified Recipient Portal
+          </span>
+          <button
+            onClick={fetchListings}
+            disabled={loading}
+            className="p-2 rounded-xl border border-[#E6E8F0] hover:bg-slate-100 text-[#5B6272] transition-colors"
+            title="Refresh marketplace"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white rounded-2xl border border-[#E6E8F0] p-4 shadow-xs">
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="relative flex-1 min-w-48">
+      {/* Backend connection notice if not configured */}
+      {!isApiConfigured() && (
+        <div className="flex items-center justify-between p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle size={16} className="text-amber-600 shrink-0" />
+            <span>
+              <strong>Platform Notice:</strong> Backend API is pending connection. Available listings will appear live once the central database is connected.
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+            VITE_API_BASE_URL
+          </span>
+        </div>
+      )}
+
+      {/* Filters & Search Toolbar */}
+      <div className="bg-white p-4 rounded-2xl border border-[#E6E8F0] shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          {/* Stream Type Tabs */}
+          <div className="inline-flex bg-slate-100 p-1 rounded-xl self-start">
+            <button
+              onClick={() => setStreamFilter('all')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                streamFilter === 'all'
+                  ? 'bg-white text-[#111827] shadow-xs'
+                  : 'text-[#5B6272] hover:text-[#111827]'
+              }`}
+            >
+              All Batches ({listings.length})
+            </button>
+            <button
+              onClick={() => setStreamFilter('edible')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                streamFilter === 'edible'
+                  ? 'bg-white text-[#0E6B45] shadow-xs'
+                  : 'text-[#5B6272] hover:text-[#0E6B45]'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-[#0E6B45]" />
+              Edible Food ({edibleCount})
+            </button>
+            <button
+              onClick={() => setStreamFilter('organic')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                streamFilter === 'organic'
+                  ? 'bg-white text-[#B8650A] shadow-xs'
+                  : 'text-[#5B6272] hover:text-[#B8650A]'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-[#B8650A]" />
+              Organic Biomass ({organicCount})
+            </button>
+          </div>
+
+          {/* Search input */}
+          <div className="relative flex-1 max-w-md">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              type="search"
-              placeholder="Search bakery, cooked meals, produce, compost, spent grains…"
+              type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-3 pr-3 py-2 text-xs bg-[#EEF0FA] border border-[#E6E8F0] rounded-xl text-[#111827] placeholder:text-[#5B6272]/60 focus:outline-none focus:border-[#0E6B45]"
+              placeholder="Search by title, ingredient, category..."
+              className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0E6B45]/20 focus:border-[#0E6B45] transition-all"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-widest text-[#5B6272] font-semibold">
-              MAX DISTANCE
+        </div>
+
+        {/* Category sub-filter chips */}
+        {categories.length > 0 && (
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto text-xs">
+            <span className="text-[#5B6272] flex items-center gap-1 shrink-0 font-medium text-[11px]">
+              <Filter size={12} /> Category:
             </span>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min={1}
-                max={25}
-                value={maxDist}
-                onChange={(e) => setMaxDist(Number(e.target.value))}
-                className="w-32 accent-[#0E6B45]"
-                aria-label="Max distance slider"
-              />
-              <span className="text-xs font-semibold text-[#111827] whitespace-nowrap">
-                Within {maxDist} km
-              </span>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" defaultChecked className="accent-[#0E6B45] rounded cursor-pointer" />
-            <span className="text-xs font-semibold text-[#5B6272]">Audit Ready Log</span>
-          </label>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[#E6E8F0]">
-          <FilterChip
-            label="All Listings"
-            count={counts.all}
-            active={stream === 'all'}
-            onClick={() => setStream('all')}
-          />
-          <FilterChip
-            label="Edible Surplus"
-            count={counts.edible}
-            active={stream === 'edible'}
-            onClick={() => setStream('edible')}
-          />
-          <FilterChip
-            label="Organic Waste"
-            count={counts.organic}
-            active={stream === 'organic'}
-            onClick={() => setStream('organic')}
-          />
-          <FilterChip
-            label="Expiring Soon (<3h)"
-            count={counts.urgent}
-            active={stream === 'urgent'}
-            variant="danger"
-            onClick={() => setStream('urgent')}
-          />
-          <FilterChip
-            label="Under 5 km"
-            count={counts.near}
-            active={stream === 'near'}
-            onClick={() => setStream('near')}
-          />
-        </div>
-      </div>
-
-      {/* Summary tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          {
-            label: `${totalEdibleKg} kg Rescuable Today`,
-            icon: '♻',
-            bg: 'bg-[#EEF0FA]',
-            text: 'text-[#111827]',
-          },
-          {
-            label: '100% Cold-Chain Logged',
-            icon: '❄',
-            bg: 'bg-[#DDF7EE]',
-            text: 'text-[#0E6B45]',
-          },
-          {
-            label: `${totalOrganicKg} kg Soil / Feed Biomass`,
-            icon: '🌱',
-            bg: 'bg-[#FBEBDD]',
-            text: 'text-[#B8650A]',
-          },
-        ].map((s) => (
-          <div key={s.label} className={cn('rounded-xl p-4 flex items-center gap-3 border border-[#E6E8F0]/60', s.bg)}>
-            <span className="text-xl">{s.icon}</span>
-            <p className={cn('text-xs font-bold', s.text)}>{s.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Grid + Sidebar */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        {/* Grid */}
-        <div className="flex-1 min-w-0 w-full">
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 animate-pulse">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-80 bg-[#E6E8F0] rounded-2xl" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {filtered.map((l) => (
-                <ListingCard key={l.id} listing={l} />
-              ))}
-              {filtered.length === 0 && (
-                <div className="col-span-2 text-center py-16 bg-white rounded-2xl border border-[#E6E8F0] p-6">
-                  <p className="text-sm font-bold text-[#111827]">No listings match your filters</p>
-                  <p className="text-xs text-[#5B6272] mt-1">Try widening the distance slider or clearing the search query.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 shrink-0 space-y-4">
-          {/* Map card */}
-          <div className="bg-white rounded-2xl border border-[#E6E8F0] overflow-hidden shadow-xs">
-            <div className="px-4 py-3 border-b border-[#E6E8F0] flex items-center justify-between">
-              <p className="text-xs font-bold text-[#111827]">Spatial Radius Telemetry</p>
-              <span className="text-[10px] text-[#0E6B45] font-semibold bg-[#DDF7EE] px-2 py-0.5 rounded-full">
-                Live OpenStreetMap
-              </span>
-            </div>
-            <div className="p-4 bg-[#F6F7FB] relative h-48 flex items-center justify-center">
-              <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#CBD5E1_1.5px,transparent_1.5px)] [background-size:14px_14px]" />
-              <div className="relative z-10 text-center">
-                <div className="w-12 h-12 rounded-full bg-[#0E6B45] text-white flex items-center justify-center mx-auto shadow-md font-bold text-xs animate-pulse">
-                  {filtered.length} Hubs
-                </div>
-                <p className="text-xs font-bold text-[#111827] mt-2">Koramangala · Indiranagar Corridor</p>
-                <p className="text-[10px] text-[#5B6272]">Concentric rings: 1km, 3km, 5km radius</p>
-              </div>
-            </div>
-            <div className="p-3 border-t border-[#E6E8F0] text-[11px] text-[#5B6272] flex items-center justify-between">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-[#0E6B45]" /> Edible
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-[#B8650A]" /> Biomass
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-[#C62828]" /> &lt;2h Alert
-              </span>
-            </div>
-          </div>
-
-          {/* Consolidated Pickup Route Suggestion */}
-          <div className="bg-white rounded-2xl border border-[#E6E8F0] p-4 shadow-xs">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-2 py-0.5 rounded-full bg-[#DDF7EE] text-[#0E6B45] text-[10px] font-bold">
-                Smart Dispatch
-              </span>
-            </div>
-            <h4 className="text-xs font-bold text-[#111827]">Consolidated Pickup Suggestion</h4>
-            <p className="text-xs text-[#5B6272] mt-1 leading-relaxed">
-              Combine 2 nearby bakery & meal lots along Outer Ring Rd to reduce transit footprint by 4.2 kg CO2e.
-            </p>
             <button
-              type="button"
-              onClick={() => alert('Generated Multi-Stop Route for Driver: Route shared via SMS.')}
-              className="mt-3 w-full py-2 bg-[#EEF0FA] hover:bg-[#E6E8F0] text-[#0E6B45] text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              onClick={() => setSelectedCategory('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                selectedCategory === 'all'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              Generate Multi-Stop Route
+              All
             </button>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors ${
+                  selectedCategory === cat
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
-        </div>
+        )}
       </div>
+
+      {/* Main Grid View */}
+      {loading ? (
+        <div className="py-20 flex flex-col items-center justify-center text-slate-400">
+          <Loader2 size={32} className="animate-spin text-[#0E6B45] mb-3" />
+          <p className="text-xs font-medium">Scanning live surplus inventory...</p>
+        </div>
+      ) : displayListings.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {displayListings.map((listing) => (
+            <ListingCard key={listing.id} listing={listing} />
+          ))}
+        </div>
+      ) : (
+        /* Honest empty state */
+        <div className="py-16 text-center bg-white rounded-2xl border border-dashed border-slate-200 p-8 max-w-lg mx-auto">
+          <div className="w-14 h-14 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+            <PackageX size={26} />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 mb-1">
+            {error ? 'Marketplace Offline' : 'No Surplus Batches Available'}
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6 leading-relaxed">
+            {error
+              ? 'Unable to connect to the backend server. Configure VITE_API_BASE_URL to load real-time active listings.'
+              : 'There are currently no active surplus listings matching your filters. New batches will appear here as suppliers publish them.'}
+          </p>
+          <button
+            onClick={fetchListings}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors"
+          >
+            <RefreshCw size={13} />
+            Check Again
+          </button>
+        </div>
+      )}
     </div>
   );
 }
