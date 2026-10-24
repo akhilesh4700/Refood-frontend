@@ -38,8 +38,20 @@ const schema = z.object({
   address: z.string().min(5, 'Enter pickup address'),
   dockInstructions: z.string().optional(),
   onSiteLead: z.string().min(2, 'Enter on-site lead name'),
+ 
   emergencyMobile: z.string().min(10, 'Enter valid mobile number'),
-});
+}).refine(
+  (data) =>
+    !data.safeUntil ||
+    !data.finalDeadline ||
+    new Date(data.finalDeadline).getTime() <=
+      new Date(data.safeUntil).getTime(),
+  {
+    message: 'Collection deadline must be on or before the safe-consumption deadline',
+    path: ['finalDeadline'],
+  }
+);
+
 
 type FormData = z.infer<typeof schema>;
 
@@ -55,9 +67,10 @@ export function CreateListing() {
   const { register, control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
-      listingType: 'edible',
-      weightKg: 25,
-    }
+  listingType: 'edible',
+  category: 'Bakery & Pastries',
+  weightKg: 25,
+}
   });
 
   const wt = watch('listingType');
@@ -71,33 +84,45 @@ export function CreateListing() {
   const toggleAllergen = (a: string) =>
     setSelectedAllergens(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a]);
 
-  const onSubmit = async (data: any) => {
-    try {
-      await createListing({
-        title: data.title,
-        description: data.description,
-        type: data.listingType === 'edible' ? 'edible' : 'organic',
-        weightKg: Number(data.weightKg),
-        category: data.category,
-        storageMethod: (storageCondition as any) || 'ambient',
-        allergens: selectedAllergens,
-        packagingNote: data.packagingNote,
-        preparedAt: data.preparedAt ? new Date(data.preparedAt).toISOString() : undefined,
-        safeUntil: data.safeUntil ? new Date(data.safeUntil).toISOString() : undefined,
-        earliestPickup: data.earliestPickup ? new Date(data.earliestPickup).toISOString() : new Date().toISOString(),
-        collectionDeadline: data.finalDeadline ? new Date(data.finalDeadline).toISOString() : new Date(Date.now() + 4 * 3600000).toISOString(),
-        pickupAddress: data.address,
-        pickupInstructions: data.dockInstructions,
-        onSiteContact: data.onSiteLead,
-        onSitePhone: data.emergencyMobile,
-        isFree: true,
-      });
-    } catch {
-      // Graceful offline/mock demonstration fallback
-    }
+const onSubmit = async (data: any) => {
+  try {
+    await createListing({
+      title: data.title,
+      description: data.description,
+      type: data.listingType === 'edible' ? 'edible' : 'organic',
+      weightKg: Number(data.weightKg),
+      category: data.category,
+      storageMethod: (storageCondition as any) || 'ambient',
+      allergens: selectedAllergens,
+      packagingNote: data.packagingNote,
+      preparedAt: data.preparedAt
+        ? new Date(data.preparedAt).toISOString()
+        : undefined,
+      safeUntil: data.safeUntil
+        ? new Date(data.safeUntil).toISOString()
+        : undefined,
+      earliestPickup: new Date(data.earliestPickup).toISOString(),
+      collectionDeadline: new Date(data.finalDeadline).toISOString(),
+      pickupAddress: data.address,
+      pickupInstructions: data.dockInstructions,
+      onSiteContact: data.onSiteLead,
+      onSitePhone: data.emergencyMobile,
+      isFree: true,
+    });
+
+    // Show success only after the API call succeeds.
     setShowToast(true);
     setTimeout(() => navigate('/supplier/listings'), 2500);
-  };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Could not publish the listing. Please try again.';
+
+    window.alert(`Listing was not published: ${message}`);
+  }
+};
+   
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

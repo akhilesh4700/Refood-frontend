@@ -10,7 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ───────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Enums ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 enum UserRole {
   SUPPLIER
@@ -73,7 +73,7 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// ─── Models ──────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Models ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 model Organization {
   id                 String             @id @default(uuid())
@@ -91,6 +91,8 @@ model Organization {
   users              User[]
   listings           Listing[]          @relation("SupplierListings")
   reservations       Reservation[]      @relation("RecipientReservations")
+  notifications      Notification[]
+  chatMessages       ChatMessage[]      @relation("OrgChatMessages")
 
   @@index([verificationStatus])
   @@index([city])
@@ -110,6 +112,7 @@ model User {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdListings Listing[]   @relation("ListingCreator")
   claimedReservations Reservation[] @relation("ClaimedByUser")
+  chatMessages   ChatMessage[] @relation("UserChatMessages")
 
   @@index([organizationId])
   @@index([role])
@@ -180,9 +183,47 @@ model Reservation {
   listing            Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
   recipientOrg       Organization      @relation("RecipientReservations", fields: [recipientOrgId], references: [id], onDelete: Cascade)
   claimedBy          User              @relation("ClaimedByUser", fields: [claimedById], references: [id], onDelete: Cascade)
+  chatMessages       ChatMessage[]
 
   // Enforce single-claim at database level: a listing can only have ONE non-cancelled active reservation
   @@index([listingId])
   @@index([recipientOrgId])
   @@index([status])
+}
+model Notification {
+  id             String       @id @default(uuid())
+  organizationId String
+  title          String
+  body           String
+  eventType      String
+  isRead         Boolean      @default(false)
+  relatedPath    String?
+  relatedId      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, isRead])
+  @@index([createdAt])
+}
+
+model ChatMessage {
+  id             String       @id @default(uuid())
+  reservationId  String
+  senderId       String
+  senderOrgId    String
+  senderRole     UserRole
+  senderName     String
+  text           String       @db.VarChar(1000)
+  createdAt      DateTime     @default(now())
+
+  reservation    Reservation  @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("UserChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderOrg      Organization @relation("OrgChatMessages", fields: [senderOrgId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([reservationId, createdAt])
+  @@index([senderOrgId])
 }

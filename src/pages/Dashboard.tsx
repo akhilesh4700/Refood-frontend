@@ -112,7 +112,16 @@ export function Dashboard() {
   const confirmedWeight = listings.reduce((sum, l) => sum + (l.weightKg || 0), 0);
   const estimatedCo2Avoided = ((confirmedWeight * 2.5) / 1000).toFixed(2);
 
-  const nextPickup = reservations[0];
+  const pendingClaims = useMemo(
+    () => reservations.filter((r) => r.reservationStatus === 'pending'),
+    [reservations]
+  );
+  const confirmedPickups = useMemo(
+    () => reservations.filter((r) => r.reservationStatus !== 'pending' && r.reservationStatus !== 'cancelled'),
+    [reservations]
+  );
+
+  const nextPickup = isSupplier ? confirmedPickups[0] : reservations[0];
 
   return (
     <div className="max-w-[1240px] mx-auto px-6 py-8 space-y-8">
@@ -225,11 +234,24 @@ export function Dashboard() {
         />
 
         <StatCard
-          label={isSupplier ? "Today's Pickups" : 'Active Claims'}
+          label={isSupplier ? (pendingClaims.length > 0 ? 'Pickups & Pending Claims' : "Today's Pickups") : 'Active Claims'}
           value={reservations.length}
           unit="Handovers"
-          sub={nextPickup ? `Next: #${nextPickup.id.slice(0, 8)}` : 'No pending pickups'}
-          chips={[{ label: `${reservations.length} Scheduled`, variant: 'info' }]}
+          sub={
+            isSupplier && pendingClaims.length > 0
+              ? `${pendingClaims.length} awaiting approval`
+              : nextPickup
+              ? `Next: #${nextPickup.id.slice(0, 8)}`
+              : 'No pending pickups'
+          }
+          chips={
+            isSupplier && pendingClaims.length > 0
+              ? [
+                  { label: `${pendingClaims.length} Pending`, variant: 'amber' },
+                  { label: `${confirmedPickups.length} Confirmed`, variant: 'info' },
+                ]
+              : [{ label: `${reservations.length} Scheduled`, variant: 'info' }]
+          }
           icon={<Truck size={18} className="text-[#B8650A]" />}
         />
 
@@ -372,20 +394,51 @@ export function Dashboard() {
 
         {/* Right Column (4 cols): Scheduled Pickups & Queue */}
         <div className="lg:col-span-4 space-y-6">
+          {/* Supplier Pending Claims Notice */}
+          {isSupplier && pendingClaims.length > 0 && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                  <Clock size={14} className="text-amber-600" />
+                  Claim Requests ({pendingClaims.length})
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-200 text-amber-900 rounded-full">
+                  ACTION NEEDED
+                </span>
+              </div>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                You have {pendingClaims.length} incoming claim request{pendingClaims.length > 1 ? 's' : ''} awaiting approval.
+              </p>
+              <div className="p-3 bg-white/80 rounded-xl border border-amber-200/60 text-xs">
+                <p className="font-bold text-slate-900 truncate">
+                  {pendingClaims[0].listing?.title || 'Surplus Batch'}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Recipient: <strong>{pendingClaims[0].recipientName}</strong>
+                </p>
+              </div>
+              <Link to="/supplier/pickups" className="block pt-1">
+                <Button variant="secondary" className="w-full text-xs font-bold py-2 bg-amber-600 text-white hover:bg-amber-700">
+                  Review & Respond to Claims →
+                </Button>
+              </Link>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl border border-[#E6E8F0] p-6 shadow-xs space-y-5">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-[#111827]">
-                {isSupplier ? 'Scheduled Pickups' : 'My Active Claims'}
+                {isSupplier ? 'Confirmed Pickups' : 'My Active Claims'}
               </h3>
               <span className="text-xs font-bold text-[#0E6B45] bg-[#DDF7EE] px-2 py-0.5 rounded-full">
-                {reservations.length} Active
+                {isSupplier ? confirmedPickups.length : reservations.length} Active
               </span>
             </div>
 
             {nextPickup ? (
               <div className="p-4 bg-[#F6F7FB] border border-[#E6E8F0] rounded-xl space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[#B8650A] uppercase tracking-wide">
+                  <span className="font-bold text-[#0E6B45] uppercase tracking-wide">
                     Status: {nextPickup.reservationStatus.replace('_', ' ')}
                   </span>
                   <span className="font-bold text-[#111827]">
@@ -416,10 +469,12 @@ export function Dashboard() {
             ) : (
               <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 <Calendar size={20} className="mx-auto text-slate-400 mb-2" />
-                <p className="text-xs font-medium text-slate-600">No scheduled handovers</p>
+                <p className="text-xs font-medium text-slate-600">
+                  {isSupplier ? 'No confirmed handovers' : 'No active reservations'}
+                </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   {isSupplier
-                    ? 'When a recipient claims a listing, pickup coordination will appear here.'
+                    ? 'When a recipient claim is confirmed, pickup coordination will appear here.'
                     : 'Claim an active surplus listing to schedule a collection.'}
                 </p>
               </div>

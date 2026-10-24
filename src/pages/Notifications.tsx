@@ -55,7 +55,7 @@ export function Notifications() {
     setError(null);
     try {
       const data = await getNotifications();
-      setNotifications(data);
+      setNotifications(Array.isArray(data) ? data : []);
     } catch (err) {
       if (err instanceof ApiUnavailableError) {
         setApiPending(true);
@@ -230,7 +230,12 @@ export function Notifications() {
                       {item.relatedPath && (
                         <Link
                           to={item.relatedPath}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!item.isRead) {
+                              handleMarkRead(item.id);
+                            }
+                          }}
                           className="font-semibold text-[#0E6B45] hover:underline"
                         >
                           View →

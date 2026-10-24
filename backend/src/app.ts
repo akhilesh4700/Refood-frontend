@@ -9,6 +9,7 @@ import { listingsRouter } from './modules/listings/listings.routes';
 import { reservationsRouter } from './modules/reservations/reservations.routes';
 import { supplierRouter } from './modules/supplier/supplier.routes';
 import { recipientRouter } from './modules/recipient/recipient.routes';
+import { notificationsRouter } from './modules/notifications/notifications.routes';
 import { sendError } from './utils/apiResponse';
 
 export function createApp(): Express {
@@ -52,6 +53,9 @@ export function createApp(): Express {
 
   app.use('/api/recipient', recipientRouter);
   app.use('/recipient', recipientRouter);
+
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/notifications', notificationsRouter);
 
   // 4. 404 Not Found Catch-All
   app.use((req: Request, res: Response) => {

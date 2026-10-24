@@ -116,8 +116,27 @@ async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new Error(err.message ?? `HTTP ${response.status}`);
+    const err = await response.json().catch(() => null);
+
+  const details = err?.error?.details ?? err?.details;
+
+  const detailMessage = Array.isArray(details)
+    ? details
+        .map((item: { field?: string; message?: string }) =>
+          `${item.field ? `${item.field}: ` : ''}${item.message ?? ''}`
+        )
+        .filter(Boolean)
+        .join('\n')
+    : '';
+
+  const message =
+    detailMessage ||
+    err?.error?.message ||
+    err?.message ||
+    `HTTP ${response.status}`;
+
+  throw new Error(message);
+
   }
 
   return response.json() as Promise<T>;
@@ -133,12 +152,16 @@ async function apiFetch<T>(
  * The backend must return a JWT and the authenticated user object.
  */
 export async function signIn(input: SignInInput): Promise<AuthResult> {
-  const result = await apiFetch<AuthResult>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  storeSession(result);
-  return result;
+  const response = await apiFetch<{ success: boolean; data: AuthResult }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }
+  );
+
+  storeSession(response.data);
+  return response.data;
 }
 
 /**
@@ -149,12 +172,16 @@ export async function signIn(input: SignInInput): Promise<AuthResult> {
  * The frontend must not claim that registration is complete or verified.
  */
 export async function signUp(input: SignUpInput): Promise<AuthResult> {
-  const result = await apiFetch<AuthResult>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  storeSession(result);
-  return result;
+  const response = await apiFetch<{ success: boolean; data: AuthResult }>(
+    '/auth/register',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }
+  );
+
+  storeSession(response.data);
+  return response.data;
 }
 
 /**
@@ -191,25 +218,44 @@ export async function getCurrentUser(): Promise<User> {
  * The backend filters listings by recipient eligibility (role-based).
  * Edible food is shown to NGO/shelter recipients; organic waste to processors.
  */
-export async function getListings(filters?: ListingFilters): Promise<PaginatedResponse<Listing>> {
+
+export async function getListings(
+  filters?: ListingFilters
+): Promise<PaginatedResponse<Listing>> {
   const params = new URLSearchParams();
+
   if (filters?.type) params.set('type', filters.type);
   if (filters?.category) params.set('category', filters.category);
   if (filters?.search) params.set('search', filters.search);
-  if (filters?.maxDistanceKm != null) params.set('maxDistanceKm', String(filters.maxDistanceKm));
+  if (filters?.maxDistanceKm != null) {
+    params.set('maxDistanceKm', String(filters.maxDistanceKm));
+  }
   if (filters?.sortBy) params.set('sortBy', filters.sortBy);
   if (filters?.sortDir) params.set('sortDir', filters.sortDir);
   if (filters?.status) params.set('status', filters.status);
+
   const qs = params.toString();
-  return apiFetch<PaginatedResponse<Listing>>(`/listings${qs ? `?${qs}` : ''}`);
+
+  const response = await apiFetch<{
+    success: boolean;
+    data: PaginatedResponse<Listing>;
+  }>(`/listings${qs ? `?${qs}` : ''}`);
+
+  return response.data;
 }
+
 
 /**
  * Fetch a single listing by ID.
  * → GET /listings/:id
  */
 export async function getListing(id: string): Promise<Listing> {
-  return apiFetch<Listing>(`/listings/${id}`);
+  const response = await apiFetch<{
+    success: boolean;
+    data: Listing;
+  }>(`/listings/${id}`);
+
+  return response.data;
 }
 
 /**
@@ -219,14 +265,22 @@ export async function getListing(id: string): Promise<Listing> {
  * This is distinct from getListings(). The supplier sees ALL their own
  * listings regardless of status; recipients see only 'active' listings.
  */
+
 export async function getMyListings(filters?: ListingFilters): Promise<PaginatedResponse<Listing>> {
   const params = new URLSearchParams();
   if (filters?.status) params.set('status', filters.status);
   if (filters?.type) params.set('type', filters.type);
   if (filters?.search) params.set('search', filters.search);
+
   const qs = params.toString();
-  return apiFetch<PaginatedResponse<Listing>>(`/supplier/listings${qs ? `?${qs}` : ''}`);
+  const response = await apiFetch<{
+    success: boolean;
+    data: PaginatedResponse<Listing>;
+  }>(`/supplier/listings${qs ? `?${qs}` : ''}`);
+
+  return response.data;
 }
+
 
 /**
  * Create a new surplus listing.
@@ -303,25 +357,38 @@ export async function withdrawListing(id: string, reason?: string): Promise<void
  * 409 Conflict response. The frontend shows a conflict state.
  */
 export async function claimListing(listingId: string): Promise<Reservation> {
-  return apiFetch<Reservation>(`/listings/${listingId}/claim`, {
+  const response = await apiFetch<{
+    success: boolean;
+    data: Reservation;
+  }>(`/listings/${listingId}/claim`, {
     method: 'POST',
   });
+
+  return response.data;
 }
 
 /**
  * Fetch the current user's reservations.
  * → GET /reservations (recipient)
  */
+
 export async function getMyReservations(): Promise<Reservation[]> {
-  return apiFetch<Reservation[]>('/reservations');
+  const response = await apiFetch<{
+    success: boolean;
+    data: Reservation[];
+  }>('/reservations');
+
+  return response.data;
 }
+
 
 /**
  * Fetch a specific reservation.
  * → GET /reservations/:id
  */
 export async function getReservation(id: string): Promise<Reservation> {
-  return apiFetch<Reservation>(`/reservations/${id}`);
+  const response = await apiFetch<{ success: boolean; data: Reservation } | Reservation>(`/reservations/${id}`);
+  return (response as { data?: Reservation }).data ?? (response as Reservation);
 }
 
 /**
@@ -329,7 +396,9 @@ export async function getReservation(id: string): Promise<Reservation> {
  * → GET /supplier/pickups
  */
 export async function getSupplierPickups(): Promise<Reservation[]> {
-  return apiFetch<Reservation[]>('/supplier/pickups');
+  const response = await apiFetch<{ success: boolean; data: Reservation[] } | Reservation[]>('/supplier/pickups');
+  const data = (response as { data?: Reservation[] }).data ?? response;
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -342,28 +411,64 @@ export async function updateReservationStatus(
   id: string,
   status: ReservationStatus
 ): Promise<Reservation> {
-  return apiFetch<Reservation>(`/reservations/${id}/status`, {
+  const response = await apiFetch<{ success: boolean; data: Reservation } | Reservation>(`/reservations/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+  return (response as { data?: Reservation }).data ?? (response as Reservation);
 }
 
 /**
  * Supplier initiates OTP generation for handover.
  * → POST /reservations/:id/otp/initiate
  *
- * The OTP is generated server-side and delivered to the recipient via the
- * platform. It is NEVER generated or stored in the frontend.
- * After this call, the reservation's otpReady field will be true.
+ * The OTP is generated server-side and returned to the supplier.
+ * The supplier communicates this code to the recipient at pickup.
  */
-export async function initiateHandoverOtp(reservationId: string): Promise<void> {
-  return apiFetch<void>(`/reservations/${reservationId}/otp/initiate`, {
+export async function initiateHandoverOtp(reservationId: string): Promise<{
+  otpReady: boolean;
+  otp?: string;
+  expiresAt: string;
+  expiresInSeconds?: number;
+  message?: string;
+}> {
+  const response = await apiFetch<{
+    success: boolean;
+    data: {
+      otpReady: boolean;
+      otp?: string;
+      expiresAt: string;
+      expiresInSeconds?: number;
+      message?: string;
+    };
+  }>(`/reservations/${reservationId}/otp/initiate`, {
     method: 'POST',
   });
+  return response.data;
 }
 
 /**
- * Recipient submits the OTP for handover verification.
+ * Authorized supplier queries the active generated OTP.
+ * → GET /reservations/:id/otp
+ */
+export async function getReservationOtp(reservationId: string): Promise<{
+  reservationId: string;
+  otp: string;
+  expiresAt: string;
+}> {
+  const response = await apiFetch<{
+    success: boolean;
+    data: {
+      reservationId: string;
+      otp: string;
+      expiresAt: string;
+    };
+  }>(`/reservations/${reservationId}/otp`);
+  return response.data;
+}
+
+/**
+ * Recipient submits the supplier's OTP for handover verification.
  * → POST /reservations/:id/otp/verify
  *
  * The backend validates the OTP and finalizes the handover.
@@ -373,10 +478,14 @@ export async function verifyHandoverOtp(
   reservationId: string,
   otp: string
 ): Promise<HandoverResult> {
-  return apiFetch<HandoverResult>(`/reservations/${reservationId}/otp/verify`, {
+  const response = await apiFetch<{
+    success: boolean;
+    data: HandoverResult;
+  }>(`/reservations/${reservationId}/otp/verify`, {
     method: 'POST',
     body: JSON.stringify({ otp }),
   });
+  return response.data;
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -384,12 +493,13 @@ export async function verifyHandoverOtp(
 /**
  * Fetch chat messages for a reservation.
  * → GET /reservations/:id/chat
- *
- * Integration pending: real-time delivery via WebSocket or SSE will be
- * implemented when the backend chat infrastructure is ready.
  */
 export async function getChatMessages(reservationId: string): Promise<ChatMessage[]> {
-  return apiFetch<ChatMessage[]>(`/reservations/${reservationId}/chat`);
+  const response = await apiFetch<{ success: boolean; data: ChatMessage[] } | ChatMessage[]>(
+    `/reservations/${reservationId}/chat`
+  );
+  if (Array.isArray(response)) return response;
+  return response.data ?? [];
 }
 
 /**
@@ -400,10 +510,14 @@ export async function sendChatMessage(
   reservationId: string,
   text: string
 ): Promise<ChatMessage> {
-  return apiFetch<ChatMessage>(`/reservations/${reservationId}/chat`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  });
+  const response = await apiFetch<{ success: boolean; data: ChatMessage } | ChatMessage>(
+    `/reservations/${reservationId}/chat`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }
+  );
+  return 'data' in response && response.data ? response.data : (response as ChatMessage);
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -415,15 +529,20 @@ export async function sendChatMessage(
  * All metric values represent confirmed outcomes from real backend records.
  */
 export async function getSupplierAnalytics(period: string): Promise<SupplierMetrics> {
-  return apiFetch<SupplierMetrics>(`/supplier/analytics?period=${encodeURIComponent(period)}`);
+  const response = await apiFetch<{ success: boolean; data: SupplierMetrics }>(
+    `/supplier/analytics?period=${encodeURIComponent(period)}`
+  );
+  return response.data;
 }
-
 /**
  * Fetch recipient impact analytics.
  * → GET /recipient/analytics?period=30d|ytd
  */
 export async function getRecipientAnalytics(period: string): Promise<RecipientMetrics> {
-  return apiFetch<RecipientMetrics>(`/recipient/analytics?period=${encodeURIComponent(period)}`);
+  const response = await apiFetch<{ success: boolean; data: RecipientMetrics }>(
+    `/recipient/analytics?period=${encodeURIComponent(period)}`
+  );
+  return response.data;
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -433,7 +552,8 @@ export async function getRecipientAnalytics(period: string): Promise<RecipientMe
  * → GET /notifications
  */
 export async function getNotifications(): Promise<AppNotification[]> {
-  return apiFetch<AppNotification[]>('/notifications');
+  const response = await apiFetch<{ success: boolean; data: AppNotification[] }>('/notifications');
+  return response.data ?? [];
 }
 
 /**
@@ -441,7 +561,9 @@ export async function getNotifications(): Promise<AppNotification[]> {
  * → PATCH /notifications/:id/read
  */
 export async function markNotificationRead(id: string): Promise<void> {
-  return apiFetch<void>(`/notifications/${id}/read`, { method: 'PATCH' });
+  await apiFetch<{ success: boolean; data?: unknown }>(`/notifications/${id}/read`, {
+    method: 'PATCH',
+  });
 }
 
 /**
@@ -449,7 +571,9 @@ export async function markNotificationRead(id: string): Promise<void> {
  * → POST /notifications/read-all
  */
 export async function markAllNotificationsRead(): Promise<void> {
-  return apiFetch<void>('/notifications/read-all', { method: 'POST' });
+  await apiFetch<{ success: boolean; data?: unknown }>('/notifications/read-all', {
+    method: 'POST',
+  });
 }
 
 // ─── Helper: API availability check ──────────────────────────────────────────

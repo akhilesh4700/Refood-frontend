@@ -130,6 +130,7 @@ export interface Reservation {
    * Shown to the recipient only; validated server-side.
    */
   otpReady: boolean;
+  handoverVerifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

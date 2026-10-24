@@ -62,3 +62,27 @@ export async function verifyHandoverOtp(req: Request, res: Response): Promise<vo
   );
   sendSuccess(res, result, 200, 'Handover verified and completed successfully');
 }
+
+export async function getChatMessages(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+  const items = await reservationsService.getChatMessages(
+    req.params.id,
+    req.user.organizationId
+  );
+  sendSuccess(res, items, 200);
+}
+
+export async function sendChatMessage(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+  const { text } = req.body;
+  const item = await reservationsService.sendChatMessage(
+    req.params.id,
+    {
+      id: req.user.id,
+      organizationId: req.user.organizationId,
+      role: req.user.role,
+    },
+    text
+  );
+  sendSuccess(res, item, 201, 'Message sent successfully');
+}

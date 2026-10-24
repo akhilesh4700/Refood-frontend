@@ -36,17 +36,32 @@ reservationsRouter.post(
   asyncHandler(reservationsController.initiateHandoverOtp)
 );
 
-// Recipient retrieves their active OTP to show at pickup gate
+// Supplier retrieves their active OTP
 reservationsRouter.get(
   '/:id/otp',
   asyncHandler(authenticate),
-  authorizeRole('RECIPIENT', 'PROCESSOR'),
+  authorizeRole('SUPPLIER'),
   asyncHandler(reservationsController.getReservationOtp)
 );
 
-// Verification of handover OTP (completes physical transfer)
+// Recipient verifies handover OTP (completes physical transfer)
 reservationsRouter.post(
   '/:id/otp/verify',
   asyncHandler(authenticate),
+  authorizeRole('RECIPIENT', 'PROCESSOR'),
   asyncHandler(reservationsController.verifyHandoverOtp)
+);
+
+// View chat messages for reservation (parties to reservation)
+reservationsRouter.get(
+  '/:id/chat',
+  asyncHandler(authenticate),
+  asyncHandler(reservationsController.getChatMessages)
+);
+
+// Send chat message for reservation (parties to reservation)
+reservationsRouter.post(
+  '/:id/chat',
+  asyncHandler(authenticate),
+  asyncHandler(reservationsController.sendChatMessage)
 );

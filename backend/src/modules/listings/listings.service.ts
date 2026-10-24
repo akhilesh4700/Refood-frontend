@@ -388,7 +388,7 @@ export async function claimListing(
         listingId: listing.id,
         recipientOrgId,
         claimedById,
-        status: 'CONFIRMED',
+        status: 'PENDING',
         paymentStatus: listing.isFree ? 'NOT_REQUIRED' : 'PENDING',
         quantityClaimedKg: listing.weightKg,
         priceAgreed: listing.price,
@@ -403,6 +403,17 @@ export async function claimListing(
           include: { supplierOrg: true },
         },
         recipientOrg: true,
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        organizationId: listing.supplierOrgId,
+        title: 'New Claim Request',
+        body: `${reservation.recipientOrg.name} has claimed your listing "${reservation.listing.title}". Please review and confirm the pickup.`,
+        eventType: 'reservation_new',
+        relatedId: reservation.id,
+        relatedPath: '/supplier/pickups',
       },
     });
 
